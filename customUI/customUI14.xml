@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui"
+          onLoad="RibbonCallbacks.onLoad">
+  <ribbon>
+    <tabs>
+      <tab id="tabHighlighter" label="Highlighter" insertAfterMso="TabHome">
+
+        <!-- ================= Controls group ================= -->
+        <group id="grpControls" label="Controls">
+
+          <toggleButton id="btnToggleHighlight"
+                        size="large"
+                        imageMso="ConditionalFormattingMenu"
+                        getLabel="RibbonCallbacks.GetToggle_Label"
+                        screentip="Enable or disable the crosshair highlighter"
+                        supertip="Turns highlighting on for every open workbook, or off entirely. Your cell formatting is never modified - this only toggles a temporary overlay."
+                        getPressed="RibbonCallbacks.GetToggle_Pressed"
+                        onAction="RibbonCallbacks.OnToggle_Action"/>
+
+          <toggleButton id="btnModeRow"
+                        size="large"
+                        label="Row"
+                        imageMso="RowHeight"
+                        screentip="Highlight active row"
+                        supertip="Highlights the entire row containing the active cell."
+                        getPressed="RibbonCallbacks.GetMode_Pressed"
+                        getEnabled="RibbonCallbacks.GetMode_Enabled"
+                        onAction="RibbonCallbacks.OnMode_Action"/>
+
+          <toggleButton id="btnModeColumn"
+                        size="large"
+                        label="Column"
+                        imageMso="ColumnWidth"
+                        screentip="Highlight active column"
+                        supertip="Highlights the entire column containing the active cell."
+                        getPressed="RibbonCallbacks.GetMode_Pressed"
+                        getEnabled="RibbonCallbacks.GetMode_Enabled"
+                        onAction="RibbonCallbacks.OnMode_Action"/>
+
+          <toggleButton id="btnModeCrosshair"
+                        size="large"
+                        label="Crosshair"
+                        imageMso="ViewGridlines"
+                        screentip="Highlight row and column"
+                        supertip="Highlights both the row and the column of the active cell at the same time."
+                        getPressed="RibbonCallbacks.GetMode_Pressed"
+                        getEnabled="RibbonCallbacks.GetMode_Enabled"
+                        onAction="RibbonCallbacks.OnMode_Action"/>
+
+        </group>
+
+        <!-- ================= Appearance group ================= -->
+        <group id="grpAppearance" label="Appearance">
+
+          <gallery id="galColour"
+                   label="Colour"
+                   size="large"
+                   columns="4"
+                   rows="2"
+                   itemWidth="32"
+                   itemHeight="32"
+                   getEnabled="RibbonCallbacks.GetGallery_Enabled"
+                   getSelectedItemID="RibbonCallbacks.GetGallery_SelectedItemID"
+                   onAction="RibbonCallbacks.OnGallery_Action"
+                   screentip="Highlight colour"
+                   supertip="Choose the colour used for the highlight overlay.">
+            <item id="itemYellow" label="Yellow" screentip="Yellow" getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemGreen"  label="Green"  screentip="Green"  getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemOrange" label="Orange" screentip="Orange" getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemCyan"   label="Cyan"   screentip="Cyan"   getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemBlue"   label="Blue"   screentip="Blue"   getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemPink"   label="Pink"   screentip="Pink"   getImage="RibbonCallbacks.GetSwatchImage"/>
+            <item id="itemGrey"   label="Grey"   screentip="Grey"   getImage="RibbonCallbacks.GetSwatchImage"/>
+          </gallery>
+
+          <button id="btnCustomColour"
+                  label="Custom Colour..."
+                  size="large"
+                  imageMso="FontColorPicker"
+                  getImage="RibbonCallbacks.GetSwatchImage"
+                  getEnabled="RibbonCallbacks.GetGallery_Enabled"
+                  screentip="Pick a custom colour"
+                  supertip="Opens the standard Excel colour picker so you can choose any RGB colour for the highlight."
+                  onAction="RibbonCallbacks.OnCustomColour_Action"/>
+
+        </group>
+
+        <!-- ================= Options group ================= -->
+        <group id="grpOptions" label="Options">
+
+          <button id="btnResetSettings"
+                  label="Reset Settings"
+                  size="large"
+                  imageMso="RefreshAll"
+                  screentip="Reset to defaults"
+                  supertip="Restores the highlighter to its factory defaults: off, crosshair mode, yellow."
+                  onAction="RibbonCallbacks.OnReset_Action"/>
+
+        </group>
+
+        <!-- ================= Help group ================= -->
+        <group id="grpHelp" label="Help">
+
+          <button id="btnAbout"
+                  label="About"
+                  size="large"
+                  imageMso="Info"
+                  screentip="About Excel Crosshair Highlighter"
+                  onAction="RibbonCallbacks.OnAbout_Action"/>
+
+        </group>
+
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
