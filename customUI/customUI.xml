@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui"
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui"
           onLoad="RibbonCallbacks.onLoad">
   <ribbon>
     <tabs>
@@ -94,7 +94,7 @@
                         label="Per-Mode Colours"
                         imageMso="DiagramColorToggle"
                         screentip="Use different colours for row and column"
-                        supertip="When enabled in Crosshair mode, the row and column highlights can use different colours. Set them via the Row Colour and Column Colour galleries."
+                        supertip="When enabled in Crosshair mode, the row and column highlights can use different colours."
                         getPressed="RibbonCallbacks.GetPerModeColours_Pressed"
                         getEnabled="RibbonCallbacks.GetPerModeColours_Enabled"
                         onAction="RibbonCallbacks.OnPerModeColours_Action"/>
@@ -263,13 +263,13 @@
         <!-- ================= Profiles group ================= -->
         <group id="grpProfiles" label="Profiles">
 
-          <dynamicMenu id="ddlProfiles"
-                       label="Profiles"
-                       imageMso="CustomViews"
-                       screentip="Highlight profiles"
-                       supertip="Switch between named sets of mode, colour, style, and intersection settings."
-                       getEnabled="RibbonCallbacks.GetProfile_Enabled"
-                       getContent="RibbonCallbacks.GetProfilesContent"/>
+          <menu id="ddlProfiles"
+               label="Profiles"
+               imageMso="CustomViews"
+               screentip="Highlight profiles"
+               supertip="Switch between named sets of mode, colour, style, and intersection settings."
+               getEnabled="RibbonCallbacks.GetProfile_Enabled"
+               getContent="RibbonCallbacks.GetProfilesContent"/>
 
           <button id="btnSaveProfile"
                   size="large"

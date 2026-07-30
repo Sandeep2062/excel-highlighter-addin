@@ -22,6 +22,13 @@ Attribute VB_Name = "HighlightEngine"
 '             sheet's UsedRange and the current window's VisibleRange, rather
 '             than the entire sheet. See docs/architecture.md for the
 '             reasoning and the known limitation this introduces.
+'
+'             v1.1.0 additions:
+'             - Border-only highlight style (alternative to fill)
+'             - Intersection accent cell (stronger tint at row/col crossing)
+'             - Protected-sheet support (opt-in, unprotects temporarily)
+'             - Animated pulse on selection change
+'             - Merged-cell awareness
 '===============================================================================
 Option Explicit
 
@@ -30,6 +37,9 @@ Option Explicit
 ' Key   : Workbook.Name & "|" & Worksheet.Name
 ' Value : "<mode>|<rgb>" signature string
 Private mTrackers As Object
+
+' Timer ID for the animation pulse, so we can cancel it if settings change.
+Private mAnimationTimerID As String
 
 '-------------------------------------------------------------------------------
 ' EnsureTrackers
@@ -51,11 +61,15 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
 
     On Error GoTo ErrHandler
 
-    If Not Settings.Enabled Then Exit Sub
-    If Settings.Mode = hmNone Then Exit Sub
+    If Not Settings.Enabled Then
+        UpdateStatusBar Nothing
+        Exit Sub
+    End If
+    If Settings.Mode = hmNone Then
+        UpdateStatusBar Nothing
+        Exit Sub
+    End If
     If Not Utilities.SheetIsEligible(sh) Then Exit Sub
-    ' TODO: Support a per-workbook / per-worksheet exclusion list here once
-    ' that setting exists - see docs/future-features.md.
 
     Dim ws As Worksheet
     Set ws = sh
@@ -65,16 +79,39 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
 
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
 
+    ' Check per-workbook exclusion before doing anything else.
+    If Utilities.WorkbookIsExcluded(wb) Then
+        UpdateStatusBar wb
+        Exit Sub
+    End If
+
+    ' Check per-sheet exclusion.
+    If Utilities.SheetIsExcluded(ws) Then
+        UpdateStatusBar wb
+        Exit Sub
+    End If
+
+    ' Record the selection in history for back/forward navigation.
+    SelectionHistory.Push wb.Name, ws.Name, target.Row, target.Column
+
     EnsureNamesExist wb
 
     ' Cheap part: just move the crosshair. Runs on every single selection
     ' change, so it must stay fast even on huge sheets.
-    UpdatePositionNames wb, target.Row, target.Column
+    UpdatePositionNames wb, target
 
     ' Expensive part: only runs when this sheet hasn't been configured yet
     ' for the current mode/colour (first visit, or settings just changed).
     If Not SheetMatchesCurrentSignature(wb, ws) Then
         RebuildConditionalFormatting ws
+    End If
+
+    ' Update the status bar with current state.
+    UpdateStatusBar wb
+
+    ' Trigger animation pulse if enabled.
+    If Settings.AnimatedEnabled Then
+        TriggerAnimationPulse ws
     End If
 
     Exit Sub
@@ -97,6 +134,7 @@ Public Sub HandleWorkbookOpen(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
     If Not Settings.Enabled Then Exit Sub
+    If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
@@ -107,6 +145,7 @@ Public Sub HandleWorkbookActivate(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
     If Not Settings.Enabled Then Exit Sub
+    If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
@@ -119,6 +158,7 @@ Public Sub HandleWindowActivate(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
     If Not Settings.Enabled Then Exit Sub
+    If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
@@ -154,7 +194,9 @@ Public Sub HandleWorkbookBeforeClose(ByVal wb As Workbook)
     Next ws
 
     Utilities.SafeDeleteName wb, NAME_ROW_PREFIX
+    Utilities.SafeDeleteName wb, NAME_ROW_END_PREFIX
     Utilities.SafeDeleteName wb, NAME_COL_PREFIX
+    Utilities.SafeDeleteName wb, NAME_COL_END_PREFIX
 
     Exit Sub
 
@@ -195,7 +237,9 @@ Public Sub ReapplyAllOpenWorkbooks()
                     UntrackSheet wb, ws
                 Next ws
                 Utilities.SafeDeleteName wb, NAME_ROW_PREFIX
+                Utilities.SafeDeleteName wb, NAME_ROW_END_PREFIX
                 Utilities.SafeDeleteName wb, NAME_COL_PREFIX
+                Utilities.SafeDeleteName wb, NAME_COL_END_PREFIX
             Else
                 EnsureNamesExist wb
                 ' Rebuild only sheets we already know about, plus the sheet
@@ -233,26 +277,67 @@ End Sub
 ' Creates the two hidden position names if this workbook doesn't have them
 ' yet. Cheap no-op on subsequent calls.
 '-------------------------------------------------------------------------------
-Private Sub EnsureNamesExist(ByVal wb As Workbook)
+Public Sub EnsureNamesExist(ByVal wb As Workbook)
+' NOTE: Made Public so RibbonCallbacks.OnExclude_Action can call it when
+' re-enabling highlighting on a previously excluded workbook.
 
     If Not Utilities.NameExists(wb, NAME_ROW_PREFIX) Then
         wb.Names.Add Name:=NAME_ROW_PREFIX, RefersToR1C1:="=1", Visible:=False
+    End If
+
+    If Not Utilities.NameExists(wb, NAME_ROW_END_PREFIX) Then
+        wb.Names.Add Name:=NAME_ROW_END_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_PREFIX) Then
         wb.Names.Add Name:=NAME_COL_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
+    If Not Utilities.NameExists(wb, NAME_COL_END_PREFIX) Then
+        wb.Names.Add Name:=NAME_COL_END_PREFIX, RefersToR1C1:="=1", Visible:=False
+    End If
+
 End Sub
 
 '-------------------------------------------------------------------------------
 ' UpdatePositionNames
-' The hot path - runs on every selection change. Just repoints two constant
-' names, which is orders of magnitude cheaper than touching FormatConditions.
+' The hot path - runs on every selection change. Repoints position names.
+' Detects merged ranges to ensure crosshairs cover full merged dimensions.
 '-------------------------------------------------------------------------------
-Private Sub UpdatePositionNames(ByVal wb As Workbook, ByVal r As Long, ByVal c As Long)
-    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & r
-    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & c
+Private Sub UpdatePositionNames(ByVal wb As Workbook, ByVal target As Range)
+
+    On Error GoTo Fallback
+
+    Dim rStart As Long, rEnd As Long, cStart As Long, cEnd As Long
+
+    If target.MergeCells Then
+        Dim ma As Range
+        Set ma = target.MergeArea
+        rStart = ma.Row
+        rEnd = ma.Row + ma.Rows.Count - 1
+        cStart = ma.Column
+        cEnd = ma.Column + ma.Columns.Count - 1
+    Else
+        rStart = target.Row
+        rEnd = target.Row + target.Rows.Count - 1
+        cStart = target.Column
+        cEnd = target.Column + target.Columns.Count - 1
+    End If
+
+    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & rStart
+    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & rEnd
+    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & cStart
+    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & cEnd
+    Exit Sub
+
+Fallback:
+    On Error Resume Next
+    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & target.Row
+    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & target.Row
+    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & target.Column
+    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & target.Column
+    On Error GoTo 0
+
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -262,35 +347,70 @@ End Sub
 '               mode and colour. Bounded to UsedRange ∪ VisibleRange to keep
 '               this affordable on very large worksheets.
 '-------------------------------------------------------------------------------
-Private Sub RebuildConditionalFormatting(ByVal ws As Worksheet)
+Public Sub RebuildConditionalFormatting(ByVal ws As Worksheet)
+' NOTE: Made Public so RibbonCallbacks.OnExclude_Action can rebuild the
+' active sheet when a workbook is un-excluded.
 
     On Error GoTo ErrHandler
+
+    ' Handle protected sheets: if AllowProtected is on, temporarily unprotect.
+    Dim wasProtected As Boolean
+    If ws.ProtectContents And Settings.AllowProtected Then
+        On Error Resume Next
+        ws.Unprotect
+        wasProtected = (Err.Number = 0)
+        On Error GoTo ErrHandler
+    End If
 
     RemoveOurConditionalFormatting ws
 
     If Not Settings.Enabled Or Settings.Mode = hmNone Then
         UntrackSheet ws.Parent, ws
-        Exit Sub
+        GoTo RestoreProtection
     End If
 
     Dim targetRange As Range
     Set targetRange = BoundedTargetRange(ws)
-    If targetRange Is Nothing Then Exit Sub
+    If targetRange Is Nothing Then GoTo RestoreProtection
 
-    Dim colour As Long
-    colour = Settings.EffectiveRGB
+    Dim rowColour As Long, colColour As Long
+    rowColour = Settings.EffectiveRowRGB
+    colColour = Settings.EffectiveColRGB
+
+    Dim style As HighlightStyle
+    style = Settings.HighlightStyle
+
+    Dim rowExpr As String, colExpr As String
+    rowExpr = "AND(ROW()>=" & NAME_ROW_PREFIX & ",ROW()<=" & NAME_ROW_END_PREFIX & ")"
+    colExpr = "AND(COLUMN()>=" & NAME_COL_PREFIX & ",COLUMN()<=" & NAME_COL_END_PREFIX & ")"
 
     Select Case Settings.Mode
         Case hmRow
-            AddRule targetRange, "=ROW()=" & NAME_ROW_PREFIX, colour
+            AddRule targetRange, "=" & rowExpr, rowColour, style
         Case hmColumn
-            AddRule targetRange, "=COLUMN()=" & NAME_COL_PREFIX, colour
+            AddRule targetRange, "=" & colExpr, colColour, style
         Case hmCrosshair
-            AddRule targetRange, "=ROW()=" & NAME_ROW_PREFIX, colour
-            AddRule targetRange, "=COLUMN()=" & NAME_COL_PREFIX, colour
+            ' When per-mode colours are enabled, row and column can differ.
+            AddRule targetRange, "=" & rowExpr, rowColour, style
+            AddRule targetRange, "=" & colExpr, colColour, style
+            ' Add intersection accent if enabled.
+            If Settings.IntersectionEnabled Then
+                Dim interColour As Long
+                interColour = Settings.IntersectionRGB
+                AddRule targetRange, "=AND(" & rowExpr & "," & colExpr & ")", interColour, style
+            End If
+        Case hmCell
+            AddRule targetRange, "=AND(" & rowExpr & "," & colExpr & ")", rowColour, style
     End Select
 
     TrackSheet ws.Parent, ws
+
+RestoreProtection:
+    If wasProtected Then
+        On Error Resume Next
+        ws.Protect
+        On Error GoTo ErrHandler
+    End If
 
     Exit Sub
 
@@ -344,14 +464,23 @@ End Function
 '-------------------------------------------------------------------------------
 ' AddRule
 ' Adds a single expression-based conditional format to targetRange.
+' Supports both fill (Interior) and border styles.
 '-------------------------------------------------------------------------------
-Private Sub AddRule(ByVal targetRange As Range, ByVal formula As String, ByVal colour As Long)
+Private Sub AddRule(ByVal targetRange As Range, ByVal formula As String, ByVal colour As Long, _
+                    Optional ByVal style As HighlightStyle = hsFill)
 
     Dim fc As FormatCondition
     Set fc = targetRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
 
     With fc
-        .Interior.Color = colour
+        If style = hsFill Then
+            .Interior.Color = colour
+        Else
+            ' Border style: use a thick border in the given colour.
+            .Borders.LineStyle = xlContinuous
+            .Borders.Weight = xlThick
+            .Borders.Color = colour
+        End If
         .StopIfTrue = False
         On Error Resume Next
         .SetFirstPriority
@@ -368,7 +497,9 @@ End Sub
 '               formula references our defined names. Anything the user
 '               added themselves is left completely untouched.
 '-------------------------------------------------------------------------------
-Private Sub RemoveOurConditionalFormatting(ByVal ws As Worksheet)
+Public Sub RemoveOurConditionalFormatting(ByVal ws As Worksheet)
+' NOTE: Made Public so RibbonCallbacks.OnExclude_Action can strip formatting
+' from excluded workbooks.
 
     On Error GoTo ErrHandler
 
@@ -398,6 +529,153 @@ ErrHandler:
 End Sub
 
 '-------------------------------------------------------------------------------
+' UpdateStatusBar
+' Description : Shows the current highlighter mode and colour in the status
+'               bar so the user can see the state at a glance. Cleared when
+'               highlighting is off or the workbook is excluded.
+'-------------------------------------------------------------------------------
+Private Sub UpdateStatusBar(ByVal wb As Workbook)
+
+    On Error Resume Next
+
+    If wb Is Nothing Then
+        Application.StatusBar = False   ' reset to default
+        Exit Sub
+    End If
+
+    If Not Settings.Enabled Or Settings.Mode = hmNone Then
+        Application.StatusBar = False
+        Exit Sub
+    End If
+
+    If Utilities.WorkbookIsExcluded(wb) Then
+        Application.StatusBar = STATUS_BAR_PREFIX & "Excluded"
+        Exit Sub
+    End If
+
+    Dim modeText As String
+    Select Case Settings.Mode
+        Case hmRow:       modeText = "Row"
+        Case hmColumn:    modeText = "Col"
+        Case hmCrosshair: modeText = "Crosshair"
+    End Select
+
+    Dim colourText As String
+    colourText = ColourName(Settings.Colour)
+
+    Dim extras As String
+    If Settings.HighlightStyle = hsBorder Then extras = " [Border]"
+    If Settings.IntersectionEnabled Then extras = extras & " [Intersect]"
+    If Settings.AnimatedEnabled Then extras = extras & " [Pulse]"
+
+    Application.StatusBar = STATUS_BAR_PREFIX & modeText & " - " & colourText & extras
+
+End Sub
+
+'-------------------------------------------------------------------------------
+' TriggerAnimationPulse
+' Description : Briefly flashes the highlight by cycling through a lighter
+'               tint and back. Uses Application.OnTime for the timer loop.
+'               Capped to 3 iterations so it doesn't fight performance.
+'-------------------------------------------------------------------------------
+Private Sub TriggerAnimationPulse(ByVal ws As Worksheet)
+
+    On Error Resume Next
+
+    ' Cancel any existing animation timer.
+    If Len(mAnimationTimerID) > 0 Then
+        On Error Resume Next
+        Application.OnTime EarliestTime:=CDate(mAnimationTimerID), Procedure:="", Schedule:=False
+        On Error GoTo 0
+    End If
+
+    ' Schedule the first pulse step.
+    mAnimationTimerID = Format$(Now + TimeValue("00:00:00.1"), "hh:mm:ss")
+    ' Store the sheet info for the pulse callback.
+    Dim pulseData As String
+    pulseData = ws.Parent.Name & "|" & ws.Name
+    Application.OnTime EarliestTime:=CDate(mAnimationTimerID), _
+        Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, 0'"
+
+End Sub
+
+'-------------------------------------------------------------------------------
+' PulseStep
+' Called by Application.OnTime to animate the highlight. Iteration 0-2
+' cycles the colour, then restores the original.
+'-------------------------------------------------------------------------------
+Public Sub PulseStep(ByVal pulseData As String, ByVal iteration As Integer)
+
+    On Error GoTo ErrHandler
+
+    If iteration > 2 Then
+        ' Animation complete - restore original colour.
+        Dim parts() As String
+        parts = Split(pulseData, "|")
+        If UBound(parts) >= 1 Then
+            Dim wb As Workbook
+            Set wb = Application.Workbooks(parts(0))
+            If Not wb Is Nothing Then
+                Dim ws As Worksheet
+                Set ws = wb.Worksheets(parts(1))
+                If Not ws Is Nothing Then
+                    RebuildConditionalFormatting ws
+                End If
+            End If
+        End If
+        mAnimationTimerID = ""
+        Exit Sub
+    End If
+
+    ' Pulse: alternate between a lighter version and the original.
+    parts = Split(pulseData, "|")
+    If UBound(parts) >= 1 Then
+        Set wb = Application.Workbooks(parts(0))
+        If Not wb Is Nothing Then
+            Set ws = wb.Worksheets(parts(1))
+            If Not ws Is Nothing Then
+                Dim fc As FormatCondition
+                Dim i As Long
+                For i = 1 To ws.Cells.FormatConditions.Count
+                    Set fc = ws.Cells.FormatConditions(i)
+                    If fc.Type = xlExpression Then
+                        Dim f As String
+                        f = fc.Formula1
+                        If InStr(1, f, NAME_ROW_PREFIX, vbTextCompare) > 0 _
+                           Or InStr(1, f, NAME_COL_PREFIX, vbTextCompare) > 0 Then
+                            If iteration Mod 2 = 0 Then
+                                ' Lighter tint: blend with white.
+                                Dim r As Long, g As Long, b As Long
+                                r = (fc.Interior.Color \ 65536) Mod 256
+                                g = (fc.Interior.Color \ 256) Mod 256
+                                b = fc.Interior.Color Mod 256
+                                fc.Interior.Color = RGB( _
+                                    (r + 255) \ 2, (g + 255) \ 2, (b + 255) \ 2)
+                            Else
+                                ' Restore original.
+                                fc.Interior.Color = Settings.EffectiveRGB
+                            End If
+                        End If
+                    End If
+                Next i
+            End If
+        End If
+    End If
+
+    ' Schedule next step.
+    mAnimationTimerID = Format$(Now + TimeValue("00:00:00.15"), "hh:mm:ss")
+    Application.OnTime EarliestTime:=CDate(mAnimationTimerID), _
+        Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, " & (iteration + 1) & "'"
+
+    Exit Sub
+
+ErrHandler:
+    Logging.LogError "HighlightEngine.PulseStep", Err.Number, Err.Description
+    mAnimationTimerID = ""
+
+End Sub
+
+'-------------------------------------------------------------------------------
 ' Tracker helpers
 '-------------------------------------------------------------------------------
 Private Function TrackerKey(ByVal wb As Workbook, ByVal ws As Worksheet) As String
@@ -405,7 +683,11 @@ Private Function TrackerKey(ByVal wb As Workbook, ByVal ws As Worksheet) As Stri
 End Function
 
 Private Function CurrentSignature() As String
-    CurrentSignature = ModeToString(Settings.Mode) & "|" & Settings.EffectiveRGB
+    ' Include per-mode colours in the signature so changing them triggers
+    ' a CF rebuild. When per-mode is off, both return the same value.
+    CurrentSignature = ModeToString(Settings.Mode) & "|" & _
+                       Settings.EffectiveRowRGB & "|" & Settings.EffectiveColRGB & "|" & _
+                       Settings.HighlightStyle
 End Function
 
 Private Function SheetMatchesCurrentSignature(ByVal wb As Workbook, ByVal ws As Worksheet) As Boolean
@@ -424,7 +706,9 @@ Private Sub TrackSheet(ByVal wb As Workbook, ByVal ws As Worksheet)
     mTrackers(TrackerKey(wb, ws)) = CurrentSignature()
 End Sub
 
-Private Sub UntrackSheet(ByVal wb As Workbook, ByVal ws As Worksheet)
+Public Sub UntrackSheet(ByVal wb As Workbook, ByVal ws As Worksheet)
+' NOTE: Made Public so RibbonCallbacks.OnExcludeSheet_Action can untrack
+' sheets that are being excluded.
     EnsureTrackers
     Dim key As String
     key = TrackerKey(wb, ws)

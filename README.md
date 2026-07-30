@@ -1,4 +1,4 @@
-# Excel Crosshair Highlighter
+# Excel-Highlighter
 
 A small Excel add-in that highlights the active row, column, or both (a
 "crosshair"), following the active cell as you move around a workbook. It
@@ -13,38 +13,51 @@ nothing highlighter-related ends up saved in the file's own formatting.
 
 ## Features
 
-- Three modes: **Row**, **Column**, **Crosshair** (row + column together), or off.
-- Seven preset colours plus a custom RGB picker.
+- Four modes: **Row**, **Column**, **Crosshair** (row + column together), **Cell** (active cell only), or off.
+- Seven preset colours plus a native Windows RGB picker (64-bit and 32-bit compatible).
+- **Per-mode colour profiles** - in Crosshair mode, row and column highlights can use different colours.
+- **Configurable hotkeys** - toggle, history back, and history forward keys can be customised via the registry.
+- Full merged-cell support: highlights automatically cover the entire dimensions of merged ranges.
+- Dark mode tinting for pleasant visual contrast on dark Office themes.
+- Dynamic runtime GDI swatches for recent custom colours in the Ribbon gallery.
+- Workbook and sheet exclusion toggles stored in file-level defined names.
+- Selection history navigation (default `Ctrl+Shift+Z` back, `Ctrl+Shift+X` forward).
+- Named profiles for quick configuration switching.
 - Works across every open workbook and window at once.
-- Settings (enabled state, mode, colour) persist between Excel sessions.
+- Settings persist between Excel sessions.
 - No VBA project password, no hidden macros required in your own workbooks.
-- Designed to degrade gracefully on protected sheets and chart sheets rather
-  than throwing errors at you.
+- Designed to degrade gracefully on protected sheets and chart sheets rather than throwing errors at you.
 
 ## How it works, briefly
 
-Two hidden, workbook-scoped defined names (`_XLCH_Row`, `_XLCH_Col`) hold the
-active row and column as plain numbers. Conditional formatting rules on each
-worksheet reference those names (`=ROW()=_XLCH_Row`, etc.). Moving the active
-cell just updates the two names - a cheap operation - rather than adding or
-removing formatting rules on every keystroke. The CF rules themselves are
-only (re)built the first time a sheet is visited, or when you change mode,
-colour, or the enabled toggle from the ribbon.
+Four hidden, workbook-scoped defined names (`_XLCH_Row`, `_XLCH_RowEnd`, `_XLCH_Col`, `_XLCH_ColEnd`) hold the active selection bounds as plain numbers. Conditional formatting rules on each worksheet reference those names (`=AND(ROW()>=_XLCH_Row,ROW()<ShortEnd)`, etc.). Moving the active cell or selecting merged ranges updates the four names - a cheap operation - rather than adding or removing formatting rules on every keystroke. The CF rules themselves are only (re)built the first time a sheet is visited, or when you change mode, colour, style, or options from the ribbon.
 
-See [docs/architecture.md](docs/architecture.md) for the full picture,
-including why the highlight range is bounded rather than applied to entire
-1,048,576-row sheets.
+See [docs/architecture.md](docs/architecture.md) for the full picture, including why the highlight range is bounded rather than applied to entire 1,048,576-row sheets.
+
+## User Guide & Documentation
+
+For a comprehensive step-by-step feature reference, shortcuts, and usage examples, see [docs/user-guide.md](docs/user-guide.md).
+
+Quick reference:
+- **Toggle Highlight**: Click **Highlight: On / Off** on the Ribbon or press `Ctrl+Shift+H` (configurable).
+- **Mode Selection**: Click **Row**, **Column**, **Crosshair**, or **Cell**.
+- **Per-Mode Colours**: Toggle **Per-Mode Colours** in the Appearance group, then pick separate colours for row and column.
+- **Navigate Cell History**: Press `Ctrl+Shift+Z` (back) or `Ctrl+Shift+X` (forward) - both configurable.
+- **Dark Mode**: Click **Dark Mode** under Options for comfortable dark-theme reading.
 
 ## Installation
 
-See [docs/installation.md](docs/installation.md). Short version: build or
-download `excel-crosshair-highlighter.xlam`, keep the `images` folder next to
-it, then add it via Excel Options → Add-ins → Manage Excel Add-ins → Browse.
+- **Option 1 (Recommended 1-Click)**: Double-click `install.bat` (or run `install.ps1` in PowerShell). It automatically builds `excel-highlighter.xlam`, copies the add-in and `images/` icons to `%APPDATA%\Microsoft\AddIns\ExcelHighlighter`, activates it in the Windows Registry for Excel, and clears Excel's ribbon cache so the Highlighter tab appears immediately.
+- **Option 2 (Manual)**: See [docs/installation.md](docs/installation.md) for step-by-step instructions.
+
+**Ribbon tab not appearing?** The installer now clears Excel's `.officeUI` cache automatically. If you still don't see the Highlighter tab after installation: close Excel completely, re-run `install.bat`, then open Excel again.
+
+To uninstall anytime, double-click `uninstall.bat` (or run `uninstall.ps1`).
 
 ## Folder structure
 
 ```
-excel-crosshair-highlighter/
+excel-highlighter-addin/
 ├── src/                      VBA source, exported as text (.cls / .bas)
 │   ├── ThisWorkbook.cls       add-in workbook lifecycle
 │   ├── AddinHost.bas          owns the EventApp instance's lifetime
@@ -52,6 +65,9 @@ excel-crosshair-highlighter/
 │   ├── HighlightEngine.bas    conditional-formatting overlay logic
 │   ├── RibbonCallbacks.bas    every customUI14.xml callback
 │   ├── Settings.bas           persisted preferences (SaveSetting/GetSetting)
+│   ├── ColourPicker.bas       Windows Common Dialog API & GDI swatch generator
+│   ├── SelectionHistory.bas    cell navigation history stack
+│   ├── Profiles.bas           named settings profiles
 │   ├── Utilities.bas          small stateless helpers
 │   ├── Logging.bas            file-based error/info logging
 │   └── Constants.bas          shared literals and enums
@@ -59,9 +75,10 @@ excel-crosshair-highlighter/
 │   ├── customUI14.xml         RibbonX definition (Office 2010+ / customUI14)
 │   └── images/                colour swatch PNGs loaded by the ribbon
 ├── docs/
-│   ├── installation.md
-│   ├── architecture.md
-│   └── future-features.md
+│   ├── user-guide.md          complete feature & usage reference guide
+│   ├── installation.md        installation & troubleshooting guide
+│   ├── architecture.md        technical architecture & performance notes
+│   └── future-features.md     project roadmap & feature backlog
 ├── scripts/                   PowerShell helpers for exporting/importing
 │                               the VBA project and building the .xlam
 ├── tests/
@@ -73,45 +90,23 @@ excel-crosshair-highlighter/
 
 ## Development workflow
 
-The VBA project itself lives inside `excel-crosshair-highlighter.xlam`, which
-is a binary Office file and isn't diff-friendly in git. The `.cls`/`.bas`
-files under `src/` are the text-exported source of truth:
+The VBA project itself lives inside `excel-highlighter.xlam`, which is a binary Office file and isn't diff-friendly in git. The `.cls`/`.bas` files under `src/` are the text-exported source of truth:
 
 1. Open the `.xlam` in Excel, make your changes in the VBA editor (Alt+F11).
-2. Run `scripts/export-vba.ps1` to write the current VBA project back out to
-   `src/` as text.
+2. Run `scripts/export-vba.ps1` to write the current VBA project back out to `src/` as text.
 3. Commit the exported text files.
 
 Going the other direction (text → binary) after a fresh checkout:
 
-1. Run `scripts/build-xlam.ps1`, which creates a blank `.xlam`, imports every
-   module from `src/`, sets the RibbonX customization from
-   `customUI/customUI14.xml`, and saves it.
+1. Run `scripts/build-xlam.ps1`, which creates a blank `.xlam`, imports every module from `src/`, sets the RibbonX customization from `customUI/customUI14.xml`, and saves it.
 
-Both scripts drive Excel via its COM object model (`CreateObject("Excel.Application")`)
-and the VBA Extensibility library, so Excel needs to be installed on the
-machine running them, and "Trust access to the VBA project object model"
-needs to be enabled under Excel Options → Trust Center → Macro Settings.
+Both scripts drive Excel via its COM object model (`CreateObject("Excel.Application")`) and the VBA Extensibility library, so Excel needs to be installed on the machine running them, and "Trust access to the VBA project object model" needs to be enabled under Excel Options → Trust Center → Macro Settings.
 
 ## Known limitations
 
-- The highlight is bounded to each sheet's used range plus whatever is
-  currently visible on screen, not the entire 1,048,576 × 16,384 grid. On a
-  sheet with very sparse, widely separated data, scrolling into a completely
-  empty area far from both isn't highlighted until you interact with it. See
-  `docs/architecture.md` for the reasoning.
-- Conditional formatting rules count against Excel's per-sheet CF limit. This
-  add-in only ever adds one or two rules per sheet, but if a workbook already
-  has an unusually large number of existing rules from other sources, adding
-  ours could push it toward that ceiling.
-- Sheets protected without "Allow formatting cells" enabled won't be
-  highlighted; there's no reliable way around that without actually
-  unprotecting the sheet, which this add-in intentionally never does on your
-  behalf.
-- The custom colour picker uses Excel's own `xlDialogEditColor` dialog via a
-  scratch palette slot. On very old custom-palette-heavy workbooks this is
-  usually fine but is worth knowing about if slot 56 is meaningfully used
-  elsewhere in that specific workbook.
+- The highlight is bounded to each sheet's used range plus whatever is currently visible on screen, not the entire 1,048,576 × 16,384 grid. On a sheet with very sparse, widely separated data, scrolling into a completely empty area far from both isn't highlighted until you interact with it. See `docs/architecture.md` for the reasoning.
+- Conditional formatting rules count against Excel's per-sheet CF limit. This add-in only ever adds one to three rules per sheet, but if a workbook already has an unusually large number of existing rules from other sources, adding ours could push it toward that ceiling.
+- Sheets protected without "Allow formatting cells" enabled won't be highlighted unless "Allow Protected" mode is enabled in the Options group.
 
 ## Roadmap
 
@@ -132,8 +127,9 @@ highlight range is bounded. If you do notice a slowdown on a specific
 workbook, please open an issue with a rough description of its size/shape.
 
 **Can I use a different colour per mode?**
-Not currently - colour is global, mode is global. Per-mode colour is a
-reasonable idea; see the roadmap.
+Yes - enable **Per-Mode Colours** in the Appearance group on the ribbon.
+This gives you separate colour galleries for the row and column highlights
+in Crosshair mode.
 
 ## Contributing
 

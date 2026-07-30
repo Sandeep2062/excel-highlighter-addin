@@ -102,6 +102,101 @@ Public Sub SafeDeleteName(ByVal wb As Workbook, ByVal nm As String)
 End Sub
 
 '-------------------------------------------------------------------------------
+' WorkbookIsExcluded
+' Description : Checks whether a workbook has the exclusion marker defined
+'               name set to 1. The exclusion travels with the file itself
+'               rather than living in the registry, so it survives being
+'               sent to someone else.
+' Parameters  : wb - the workbook to check
+' Returns     : Boolean - True if the workbook is excluded from highlighting
+'-------------------------------------------------------------------------------
+Public Function WorkbookIsExcluded(ByVal wb As Workbook) As Boolean
+    On Error Resume Next
+    If NameExists(wb, NAME_EXCLUDED) Then
+        WorkbookIsExcluded = (CLng(wb.Names(NAME_EXCLUDED).RefersToRange.Value) = 1)
+    End If
+    On Error GoTo 0
+End Function
+
+'-------------------------------------------------------------------------------
+' SetWorkbookExclusion
+' Description : Adds or removes the exclusion marker on a workbook. When
+'               excluded is True, a hidden defined name _XLCH_Excluded is
+'               created (or updated) with value 1. When False, the name is
+'               removed entirely.
+' Parameters  : wb       - the workbook to modify
+'               excluded - True to exclude, False to allow highlighting
+'-------------------------------------------------------------------------------
+Public Sub SetWorkbookExclusion(ByVal wb As Workbook, ByVal excluded As Boolean)
+    On Error GoTo ErrHandler
+    If excluded Then
+        If Not NameExists(wb, NAME_EXCLUDED) Then
+            wb.Names.Add Name:=NAME_EXCLUDED, RefersToR1C1:="=1", Visible:=False
+        Else
+            wb.Names(NAME_EXCLUDED).RefersToR1C1 = "=1"
+        End If
+    Else
+        SafeDeleteName wb, NAME_EXCLUDED
+    End If
+    Exit Sub
+ErrHandler:
+    Logging.LogError "Utilities.SetWorkbookExclusion", Err.Number, Err.Description, wb.Name
+End Sub
+
+'-------------------------------------------------------------------------------
+' SheetIsExcluded
+' Description : Checks whether a specific worksheet has the sheet-level
+'               exclusion marker defined name set to 1. This is a
+'               worksheet-scoped name, so it only affects that one sheet.
+' Parameters  : ws - the worksheet to check
+' Returns     : Boolean - True if the sheet is excluded from highlighting
+'-------------------------------------------------------------------------------
+Public Function SheetIsExcluded(ByVal ws As Worksheet) As Boolean
+    On Error Resume Next
+    If NameExists(ws.Parent, NAME_SHEET_EXCLUDED) Then
+        ' Worksheet-scoped names are accessed via ws.Parent.Names but
+        ' the name itself is scoped to the sheet. We check if the name
+        ' exists and its value is 1.
+        Dim nm As Name
+        Set nm = ws.Parent.Names(NAME_SHEET_EXCLUDED)
+        If Not nm Is Nothing Then
+            If InStr(1, nm.RefersTo, ws.CodeName, vbTextCompare) > 0 Then
+                SheetIsExcluded = (CLng(ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToRange.Value) = 1)
+            End If
+        End If
+    End If
+    On Error GoTo 0
+End Function
+
+'-------------------------------------------------------------------------------
+' SetSheetExclusion
+' Description : Adds or removes the sheet-level exclusion marker. When
+'               excluded is True, a worksheet-scoped defined name
+'               _XLCH_SheetExcluded is created with value 1. When False,
+'               the name is removed.
+' Parameters  : ws       - the worksheet to modify
+'               excluded - True to exclude, False to allow highlighting
+'-------------------------------------------------------------------------------
+Public Sub SetSheetExclusion(ByVal ws As Worksheet, ByVal excluded As Boolean)
+    On Error GoTo ErrHandler
+    If excluded Then
+        ' Worksheet-scoped name: the name includes the sheet name as scope.
+        Dim scopedName As String
+        scopedName = "'" & ws.Name & "'!" & NAME_SHEET_EXCLUDED
+        If Not NameExists(ws.Parent, NAME_SHEET_EXCLUDED) Then
+            ws.Parent.Names.Add Name:=scopedName, RefersToR1C1:="=1", Visible:=False
+        Else
+            ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToR1C1 = "=1"
+        End If
+    Else
+        SafeDeleteName ws.Parent, NAME_SHEET_EXCLUDED
+    End If
+    Exit Sub
+ErrHandler:
+    Logging.LogError "Utilities.SetSheetExclusion", Err.Number, Err.Description, ws.Name
+End Sub
+
+'-------------------------------------------------------------------------------
 ' NameExists
 '-------------------------------------------------------------------------------
 Public Function NameExists(ByVal wb As Workbook, ByVal nm As String) As Boolean
@@ -162,6 +257,7 @@ Public Function ModeFromString(ByVal s As String) As HighlightMode
         Case "ROW":       ModeFromString = hmRow
         Case "COLUMN":    ModeFromString = hmColumn
         Case "CROSSHAIR": ModeFromString = hmCrosshair
+        Case "CELL":      ModeFromString = hmCell
         Case Else:        ModeFromString = hmNone
     End Select
 End Function
@@ -171,6 +267,7 @@ Public Function ModeToString(ByVal m As HighlightMode) As String
         Case hmRow:       ModeToString = "ROW"
         Case hmColumn:    ModeToString = "COLUMN"
         Case hmCrosshair: ModeToString = "CROSSHAIR"
+        Case hmCell:      ModeToString = "CELL"
         Case Else:        ModeToString = "NONE"
     End Select
 End Function

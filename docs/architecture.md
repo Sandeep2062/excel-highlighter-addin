@@ -37,12 +37,12 @@ to refresh it on every single selection change means paying for a full
 dependency-tree recalculation pass on every arrow-key press, which is
 noticeably slow on workbooks with any non-trivial formula load.
 
-Repointing a defined name's `RefersToR1C1` to a new constant, by contrast,
-only dirties the (tiny) set of things that actually depend on that name -
-our CF rules - so Excel only needs to re-evaluate cells within the CF's
-target range, not the whole workbook. This is the difference between "cheap
-on every selection change" and "cheap only when idle", which for something
-that fires on every arrow key matters a lot.
+Four hidden, workbook-scoped defined names (`_XLCH_Row`, `_XLCH_RowEnd`, `_XLCH_Col`, `_XLCH_ColEnd`)
+store the start and end row/column boundaries of the active selection. For single-cell selections,
+`_XLCH_Row` equals `_XLCH_RowEnd` and `_XLCH_Col` equals `_XLCH_ColEnd`. For merged cell ranges,
+the names automatically capture the full merged dimensions (`MergeArea`).
+Repointing these defined names' `RefersToR1C1` to new constants on `SheetSelectionChange`
+only dirties the set of cells depending on those names - our CF rules - keeping the hot path cheap.
 
 ## Why the CF target range is bounded
 

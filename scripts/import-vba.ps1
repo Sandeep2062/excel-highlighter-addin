@@ -6,7 +6,7 @@
 
 .PARAMETER XlamPath
     Path to the .xlam to update. Defaults to
-    excel-crosshair-highlighter.xlam in the repo root.
+    excel-highlighter.xlam in the repo root.
 
 .NOTES
     Requires "Trust access to the VBA project object model" enabled.
@@ -15,11 +15,20 @@
 
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")),
-    [string]$XlamPath = (Join-Path $RepoRoot "excel-crosshair-highlighter.xlam")
+    [string]$RepoRoot,
+    [string]$XlamPath
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $RepoRoot) {
+    $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
+    if (-not $scriptDir) { $scriptDir = Get-Location }
+    $RepoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+}
+if (-not $XlamPath) {
+    $XlamPath = Join-Path $RepoRoot "excel-highlighter.xlam"
+}
 
 if (-not (Test-Path $XlamPath)) {
     throw "Could not find $XlamPath. Run build-xlam.ps1 first, or pass -XlamPath explicitly."
@@ -33,7 +42,14 @@ $excel.DisplayAlerts = $false
 
 try {
     $workbook = $excel.Workbooks.Open($XlamPath)
-    $vbProject = $workbook.VBProject
+    try {
+        $vbProject = $workbook.VBProject
+    } catch {
+        $vbProject = $null
+    }
+    if ($null -eq $vbProject -or $null -eq $vbProject.VBComponents) {
+        throw "Access to the Excel VBA Project object model is blocked or disabled. Please enable 'Trust access to the VBA project object model' in Excel (File > Options > Trust Center > Trust Center Settings > Macro Settings)."
+    }
 
     # Remove every component except ThisWorkbook (which can't be removed,
     # only overwritten) before reimporting, so stale renamed/deleted modules
@@ -64,7 +80,8 @@ try {
 
     $standardModules = @(
         "Constants.bas", "Logging.bas", "Utilities.bas", "Settings.bas",
-        "HighlightEngine.bas", "AddinHost.bas", "RibbonCallbacks.bas"
+        "HighlightEngine.bas", "AddinHost.bas", "RibbonCallbacks.bas",
+        "ColourPicker.bas", "SelectionHistory.bas", "Profiles.bas"
     )
     foreach ($moduleFile in $standardModules) {
         Write-Host "  Importing $moduleFile"
@@ -75,7 +92,7 @@ try {
     $workbook.Close($false)
 }
 finally {
-    $excel.Quit()
+    try { $excel.Quit() } catch {}
     [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
 }
 
