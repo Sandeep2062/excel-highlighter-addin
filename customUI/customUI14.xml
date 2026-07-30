@@ -288,7 +288,7 @@
                   label="About"
                   size="large"
                   imageMso="Info"
-                  screentip="About Excel-Highlighter"
+                  screentip="About Excel Highlighter"
                   onAction="RibbonCallbacks.OnAbout_Action"/>
 
         </group>

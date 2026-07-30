@@ -77,11 +77,27 @@ try {
     $thisWorkbookBody = ($thisWorkbookSrc -split "(?ms)^Attribute VB_Exposed.*?\r?\n", 2)[1]
     $vbProject.VBComponents.Item("ThisWorkbook").CodeModule.AddFromString($thisWorkbookBody)
 
+    # NOTE: src/ is checked out of git with LF-only line endings. That's fine for
+    # AddFromString above (which normalises internally) and mostly fine for plain
+    # .bas code, but VBComponents.Import() reading a class module's raw
+    # VERSION/BEGIN/MultiUse/END header straight off disk needs real CRLF line
+    # breaks in that header block, or the project loader can mis-parse it and
+    # throw "Compile error: Expected: end of statement" the first time the
+    # project tries to compile. Normalise to CRLF in a throwaway temp copy
+    # before importing anything from disk, so this can't bite us again
+    # regardless of how the working copy's line endings were checked out.
+    function Import-ModuleWithCrlf {
+        param([string]$SourcePath, [string]$FileName)
+        $raw = Get-Content -Path $SourcePath -Raw
+        $crlf = [System.Text.RegularExpressions.Regex]::Replace($raw, "\r\n|\r|\n", "`r`n")
+        $tempPath = Join-Path $env:TEMP $FileName
+        [System.IO.File]::WriteAllText($tempPath, $crlf, (New-Object System.Text.UTF8Encoding($false)))
+        $vbProject.VBComponents.Import($tempPath) | Out-Null
+        Remove-Item $tempPath -Force
+    }
+
     # EventApp.cls is a genuinely new class module.
-    $eventAppTemp = Join-Path $env:TEMP "EventApp.cls"
-    Copy-Item (Join-Path $srcDir "EventApp.cls") $eventAppTemp -Force
-    $vbProject.VBComponents.Import($eventAppTemp) | Out-Null
-    Remove-Item $eventAppTemp -Force
+    Import-ModuleWithCrlf -SourcePath (Join-Path $srcDir "EventApp.cls") -FileName "EventApp.cls"
 
     # Standard modules import directly.
     $standardModules = @(
@@ -98,9 +114,8 @@ try {
     )
 
     foreach ($moduleFile in $standardModules) {
-        $path = Join-Path $srcDir $moduleFile
         Write-Host "  Importing $moduleFile"
-        $vbProject.VBComponents.Import($path) | Out-Null
+        Import-ModuleWithCrlf -SourcePath (Join-Path $srcDir $moduleFile) -FileName $moduleFile
     }
 
     $tempXlam = Join-Path $env:TEMP ("excel_build_" + [Guid]::NewGuid().ToString("N") + ".xlam")
@@ -110,8 +125,11 @@ try {
     $workbook.RemovePersonalInformation = $false
 
     try {
+        # Title is what shows as the add-in's display name in File > Options > Add-ins.
+        # Author/Company are what Excel reads for the Publisher column there - set both
+        # so it shows up regardless of which one Excel's dialog happens to prefer.
         $workbook.BuiltinDocumentProperties.Item("Author").Value = "Sandeep Khadka"
-        $workbook.BuiltinDocumentProperties.Item("Title").Value = "Excel-Highlighter"
+        $workbook.BuiltinDocumentProperties.Item("Title").Value = "Excel Highlighter"
         $workbook.BuiltinDocumentProperties.Item("Comments").Value = "Non-destructive row, column and crosshair cell highlighter for Microsoft Excel."
         $workbook.BuiltinDocumentProperties.Item("Company").Value = "Sandeep Khadka"
     } catch {}
@@ -195,14 +213,14 @@ try {
     if (Test-Path $corePropsPath) {
         $coreXml = [System.IO.File]::ReadAllText($corePropsPath)
         if (-not $coreXml.Contains("<dc:creator>")) {
-            $coreXml = $coreXml.Replace('</cp:coreProperties>', '<dc:creator>Sandeep Khadka</dc:creator><dc:title>Excel Crosshair Highlighter</dc:title><dc:description>Non-destructive row, column and crosshair cell highlighter for Microsoft Excel.</dc:description></cp:coreProperties>')
+            $coreXml = $coreXml.Replace('</cp:coreProperties>', '<dc:creator>Sandeep Khadka</dc:creator><dc:title>Excel Highlighter</dc:title><dc:description>Non-destructive row, column and crosshair cell highlighter for Microsoft Excel.</dc:description></cp:coreProperties>')
         } else {
             $coreXml = $coreXml -replace '<dc:creator>[^<]*</dc:creator>', '<dc:creator>Sandeep Khadka</dc:creator>'
         }
         if (-not $coreXml.Contains("<dc:title>")) {
-            $coreXml = $coreXml.Replace('</cp:coreProperties>', '<dc:title>Excel-Highlighter</dc:title><dc:description>Non-destructive row, column and crosshair cell highlighter for Microsoft Excel.</dc:description></cp:coreProperties>')
+            $coreXml = $coreXml.Replace('</cp:coreProperties>', '<dc:title>Excel Highlighter</dc:title><dc:description>Non-destructive row, column and crosshair cell highlighter for Microsoft Excel.</dc:description></cp:coreProperties>')
         } else {
-            $coreXml = $coreXml -replace '<dc:title>[^<]*</dc:title>', '<dc:title>Excel-Highlighter</dc:title>'
+            $coreXml = $coreXml -replace '<dc:title>[^<]*</dc:title>', '<dc:title>Excel Highlighter</dc:title>'
             $coreXml = $coreXml -replace '<dc:description>[^<]*</dc:description>', '<dc:description>Non-destructive row, column and crosshair cell highlighter for Microsoft Excel.</dc:description>'
         }
         [System.IO.File]::WriteAllText($corePropsPath, $coreXml, $utf8NoBom)

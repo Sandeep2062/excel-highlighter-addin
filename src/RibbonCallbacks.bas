@@ -768,7 +768,7 @@ End Sub
 
 Public Sub OnAbout_Action(ByVal control As IRibbonControl)
     On Error Resume Next
-    MsgBox "Excel-Highlighter" & vbCrLf & _
+    MsgBox "Excel Highlighter" & vbCrLf & _
            "Version " & APP_VERSION & vbCrLf & vbCrLf & _
            "Non-destructive row/column/crosshair highlighting for the active cell." & vbCrLf & _
            "Hotkeys: " & Settings.HotkeyToggle & " toggle | " & _
