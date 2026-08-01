@@ -282,19 +282,19 @@ Public Sub EnsureNamesExist(ByVal wb As Workbook)
 ' re-enabling highlighting on a previously excluded workbook.
 
     If Not Utilities.NameExists(wb, NAME_ROW_PREFIX) Then
-        wb.Names.Add name:=NAME_ROW_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_PREFIX, RefersTo:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_ROW_END_PREFIX) Then
-        wb.Names.Add name:=NAME_ROW_END_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_END_PREFIX, RefersTo:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_PREFIX) Then
-        wb.Names.Add name:=NAME_COL_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_PREFIX, RefersTo:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_END_PREFIX) Then
-        wb.Names.Add name:=NAME_COL_END_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_END_PREFIX, RefersTo:="=1", Visible:=False
     End If
 
 End Sub
@@ -324,18 +324,30 @@ Private Sub UpdatePositionNames(ByVal wb As Workbook, ByVal target As Range)
         cEnd = target.Column + target.Columns.count - 1
     End If
 
-    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & rStart
-    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & rEnd
-    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & cStart
-    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & cEnd
+    Dim nRow As name, nRowEnd As name, nCol As name, nColEnd As name
+    Set nRow = Utilities.GetNameObject(wb, NAME_ROW_PREFIX)
+    Set nRowEnd = Utilities.GetNameObject(wb, NAME_ROW_END_PREFIX)
+    Set nCol = Utilities.GetNameObject(wb, NAME_COL_PREFIX)
+    Set nColEnd = Utilities.GetNameObject(wb, NAME_COL_END_PREFIX)
+
+    If Not nRow Is Nothing Then nRow.RefersTo = "=" & rStart
+    If Not nRowEnd Is Nothing Then nRowEnd.RefersTo = "=" & rEnd
+    If Not nCol Is Nothing Then nCol.RefersTo = "=" & cStart
+    If Not nColEnd Is Nothing Then nColEnd.RefersTo = "=" & cEnd
     Exit Sub
 
 Fallback:
     On Error Resume Next
-    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & target.Row
-    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & target.Row
-    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & target.Column
-    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & target.Column
+    EnsureNamesExist wb
+    Set nRow = Utilities.GetNameObject(wb, NAME_ROW_PREFIX)
+    Set nRowEnd = Utilities.GetNameObject(wb, NAME_ROW_END_PREFIX)
+    Set nCol = Utilities.GetNameObject(wb, NAME_COL_PREFIX)
+    Set nColEnd = Utilities.GetNameObject(wb, NAME_COL_END_PREFIX)
+
+    If Not nRow Is Nothing Then nRow.RefersTo = "=" & target.Row
+    If Not nRowEnd Is Nothing Then nRowEnd.RefersTo = "=" & target.Row
+    If Not nCol Is Nothing Then nCol.RefersTo = "=" & target.Column
+    If Not nColEnd Is Nothing Then nColEnd.RefersTo = "=" & target.Column
     On Error GoTo 0
 
 End Sub

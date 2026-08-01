@@ -63,23 +63,28 @@ foreach ($uiPath in $officeUiPaths) {
     }
 }
 
-# Copy files to target folder and root AddIns folder
-$rootAddinDir = Join-Path $env:APPDATA "Microsoft\AddIns"
-$rootXlam = Join-Path $rootAddinDir "excel-highlighter.xlam"
-$rootImages = Join-Path $rootAddinDir "images"
-
+# Copy file exclusively to dedicated add-in folder
 Copy-Item $xlamSource $targetXlam -Force
-Copy-Item $xlamSource $rootXlam -Force
 Unblock-File -Path $targetXlam -ErrorAction SilentlyContinue
-Unblock-File -Path $rootXlam -ErrorAction SilentlyContinue
 Write-Host "  Copied and unblocked add-in at: $targetXlam" -ForegroundColor Green
-Write-Host "  Copied and unblocked add-in at: $rootXlam" -ForegroundColor Green
+
+# Clean up any legacy or duplicate copies from XLSTART and root AddIns folder
+$legacyFiles = @(
+    (Join-Path $env:APPDATA "Microsoft\AddIns\excel-highlighter.xlam"),
+    (Join-Path $env:APPDATA "Microsoft\Excel\XLSTART\excel-highlighter.xlam"),
+    (Join-Path $env:APPDATA "Microsoft\Excel\XLSTART\static-ribbon-test.xlam"),
+    (Join-Path $env:APPDATA "Microsoft\Excel\XLSTART\test-static.xlam")
+)
+foreach ($legFile in $legacyFiles) {
+    if (Test-Path $legFile) {
+        Remove-Item $legFile -Force -ErrorAction SilentlyContinue
+        Write-Host "  Removed duplicate/legacy copy: $legFile" -ForegroundColor Yellow
+    }
+}
 
 if (Test-Path $imagesSource) {
     if (-not (Test-Path $targetImages)) { New-Item -ItemType Directory -Path $targetImages -Force | Out-Null }
-    if (-not (Test-Path $rootImages)) { New-Item -ItemType Directory -Path $rootImages -Force | Out-Null }
     Get-ChildItem -Path $imagesSource -File | Copy-Item -Destination $targetImages -Force
-    Get-ChildItem -Path $imagesSource -File | Copy-Item -Destination $rootImages -Force
     Write-Host "  Copied UI icons to: $targetImages" -ForegroundColor Green
 }
 
@@ -119,6 +124,18 @@ foreach ($ver in $officeVersions) {
         Set-ItemProperty -Path $regPath -Name $targetKeyName -Value $regValue -Force | Out-Null
         Write-Host "  Activated in Excel $ver Registry ($targetKeyName -> $regValue)" -ForegroundColor Green
         $activatedCount++
+
+        # Register as a Trusted Location in Excel Trust Center so modern Excel
+        # (2021/2024/365) never blocks the macro payload or ribbon UI
+        $trustedLocBase = "HKCU:\Software\Microsoft\Office\$ver\Excel\Security\Trusted Locations"
+        if (Test-Path $trustedLocBase) {
+            $locKey = Join-Path $trustedLocBase "ExcelHighlighter"
+            if (-not (Test-Path $locKey)) { New-Item -Path $locKey -Force | Out-Null }
+            Set-ItemProperty -Path $locKey -Name "Path" -Value $targetDir -Force
+            Set-ItemProperty -Path $locKey -Name "Description" -Value "Excel Highlighter Add-in" -Force
+            Set-ItemProperty -Path $locKey -Name "AllowSubfolders" -Value 1 -Type DWord -Force
+            Write-Host "  Added Trust Center Trusted Location for Excel $ver" -ForegroundColor Green
+        }
     }
 }
 

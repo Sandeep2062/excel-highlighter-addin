@@ -30,6 +30,9 @@ Public Sub StartUp()
     RegisterHotkey
     RegisterHistoryHotkeys
 
+    ' Wire right-click cell context menu.
+    AddContextMenu
+
     ' If the user left the add-in enabled last session, make sure the
     ' currently active workbook picks up highlighting immediately rather
     ' than waiting for the next selection change.
@@ -121,6 +124,7 @@ Public Sub ShutDown()
     ' Unregister all hotkeys before tearing down anything else.
     UnregisterHotkey
     UnregisterHistoryHotkeys
+    RemoveContextMenu
 
     Dim wb As Workbook
     For Each wb In Application.Workbooks
@@ -149,3 +153,35 @@ End Sub
 Public Function IsRunning() As Boolean
     IsRunning = Not gEventApp Is Nothing
 End Function
+
+'-------------------------------------------------------------------------------
+' Cell Right-Click Context Menu Integration
+'-------------------------------------------------------------------------------
+Public Sub AddContextMenu()
+    On Error Resume Next
+    RemoveContextMenu
+    Dim cb As Object
+    Set cb = Application.CommandBars("Cell")
+    If Not cb Is Nothing Then
+        Dim cbut As Object
+        Set cbut = cb.Controls.Add(Type:=1, Temporary:=True) ' 1 = msoControlButton
+        cbut.Caption = "Toggle Highlighter (Ctrl+Shift+H)"
+        cbut.OnAction = "AddinHost.ToggleHotkeyHandler"
+        cbut.FaceId = 463
+        cbut.BeginGroup = True
+    End If
+End Sub
+
+Public Sub RemoveContextMenu()
+    On Error Resume Next
+    Dim cb As Object
+    Set cb = Application.CommandBars("Cell")
+    If Not cb Is Nothing Then
+        Dim ctrl As Object
+        For Each ctrl In cb.Controls
+            If ctrl.Caption Like "*Highlighter*" Then
+                ctrl.Delete
+            End If
+        Next ctrl
+    End If
+End Sub

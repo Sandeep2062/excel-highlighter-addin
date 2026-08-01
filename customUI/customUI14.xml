@@ -3,7 +3,7 @@
           onLoad="onLoad">
   <ribbon>
     <tabs>
-      <tab id="tabHighlighter" label="Highlighter" insertAfterMso="TabHome">
+      <tab id="tabHighlighter" label="Highlighter">
 
         <!-- ================= Controls group ================= -->
         <group id="grpControls" label="Controls">
@@ -66,15 +66,11 @@
                    label="Colour"
                    size="large"
                    columns="4"
-                   rows="3"
-                   itemWidth="32"
-                   itemHeight="32"
                    getEnabled="GetGallery_Enabled"
                    getSelectedItemID="GetGallery_SelectedItemID"
                    getItemCount="GetGallery_ItemCount"
                    getItemID="GetGallery_ItemID"
                    getItemLabel="GetGallery_ItemLabel"
-                   getItemImage="GetGallery_ItemImage"
                    getItemScreentip="GetGallery_ItemScreentip"
                    onAction="OnGallery_Action"
                    screentip="Highlight colour"
@@ -83,7 +79,7 @@
           <button id="btnCustomColour"
                   label="Custom Colour..."
                   size="large"
-                  getImage="GetSwatchImage"
+                  imageMso="ColorPalette"
                   getEnabled="GetGallery_Enabled"
                   screentip="Pick a custom colour"
                   supertip="Opens the standard Excel colour picker so you can choose any RGB colour for the highlight."
@@ -103,15 +99,11 @@
                    label="Row Colour"
                    size="normal"
                    columns="4"
-                   rows="2"
-                   itemWidth="32"
-                   itemHeight="32"
                    getEnabled="GetRowColourGallery_Enabled"
                    getSelectedItemID="GetRowColour_SelectedItemID"
                    getItemCount="GetGallery_ItemCount"
                    getItemID="GetGallery_ItemID"
                    getItemLabel="GetGallery_ItemLabel"
-                   getItemImage="GetGallery_ItemImage"
                    getItemScreentip="GetGallery_ItemScreentip"
                    onAction="OnRowColour_Action"
                    screentip="Row highlight colour"
@@ -121,15 +113,11 @@
                    label="Col Colour"
                    size="normal"
                    columns="4"
-                   rows="2"
-                   itemWidth="32"
-                   itemHeight="32"
                    getEnabled="GetRowColourGallery_Enabled"
                    getSelectedItemID="GetColColour_SelectedItemID"
                    getItemCount="GetGallery_ItemCount"
                    getItemID="GetGallery_ItemID"
                    getItemLabel="GetGallery_ItemLabel"
-                   getItemImage="GetGallery_ItemImage"
                    getItemScreentip="GetGallery_ItemScreentip"
                    onAction="OnColColour_Action"
                    screentip="Column highlight colour"

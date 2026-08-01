@@ -164,10 +164,8 @@ try {
     # Extract the original xlam to the temp directory.
     [System.IO.Compression.ZipFile]::ExtractToDirectory($tempXlam, $extractDir)
 
-    # 2a. Copy customUI XML files into the package.
+    # 2a. Copy customUI14.xml into the package.
     $customUi14Path = Join-Path $customUiDir "customUI14.xml"
-    $customUi07Path = Join-Path $customUiDir "customUI.xml"
-
     $pkgCustomUiDir = Join-Path $extractDir "customUI"
     if (-not (Test-Path $pkgCustomUiDir)) {
         New-Item -ItemType Directory -Path $pkgCustomUiDir -Force | Out-Null
@@ -176,10 +174,6 @@ try {
     if (Test-Path $customUi14Path) {
         Copy-Item $customUi14Path (Join-Path $pkgCustomUiDir "customUI14.xml") -Force
         Write-Host "  Added customUI/customUI14.xml"
-    }
-    if (Test-Path $customUi07Path) {
-        Copy-Item $customUi07Path (Join-Path $pkgCustomUiDir "customUI.xml") -Force
-        Write-Host "  Added customUI/customUI.xml"
     }
 
     # 2b. Update _rels/.rels to reference customUI14.xml.
@@ -190,14 +184,6 @@ try {
 
     $relType14 = "http://schemas.microsoft.com/office/2007/relationships/ui/extensibility"
     $addedRel = '<Relationship Id="rIdCustomUI14" Type="' + $relType14 + '" Target="customUI/customUI14.xml"/>'
-
-    # Also declare customUI.xml (Excel 2007 schema) if it exists, so it's not
-    # an orphaned part in the OPC package - Excel silently rejects the ribbon
-    # if a part exists in the zip but isn't declared in .rels or [Content_Types].
-    if (Test-Path $customUi07Path) {
-        $relType07 = "http://schemas.microsoft.com/office/2006/relationships/ui/extensibility"
-        $addedRel = $addedRel + '<Relationship Id="rIdCustomUI07" Type="' + $relType07 + '" Target="customUI/customUI.xml"/>'
-    }
 
     $relsContent = $relsContent.Replace('</Relationships>', "$addedRel</Relationships>")
 
@@ -212,12 +198,6 @@ try {
     $contentTypes = $contentTypes -replace '(?i)<Override[^>]+customUI[^>]+/>', ''
 
     $addedOverride = '<Override PartName="/customUI/customUI14.xml" ContentType="application/vnd.ms-office.customUI+xml"/>'
-
-    # Also declare customUI.xml (Excel 2007 schema) if it exists, so it's not
-    # an orphaned part - see comment above about .rels.
-    if (Test-Path $customUi07Path) {
-        $addedOverride = $addedOverride + '<Override PartName="/customUI/customUI.xml" ContentType="application/vnd.ms-office.customUI+xml"/>'
-    }
 
     $contentTypes = $contentTypes.Replace('</Types>', "$addedOverride</Types>")
 

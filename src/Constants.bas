@@ -36,20 +36,12 @@ Public Const KEY_ROW_COLOUR         As String = "RowColour"
 Public Const KEY_COL_COLOUR         As String = "ColColour"
 
 ' --- Defined name prefixes (per-workbook, hidden) ------------------------------
-' Each monitored workbook gets its own set of names so that multiple open
-' workbooks can be highlighted independently and simultaneously.
-Public Const NAME_ROW_PREFIX        As String = "_XLCH_Row"
-Public Const NAME_ROW_END_PREFIX    As String = "_XLCH_RowEnd"
-Public Const NAME_COL_PREFIX        As String = "_XLCH_Col"
-Public Const NAME_COL_END_PREFIX    As String = "_XLCH_ColEnd"
-Public Const NAME_EXCLUDED          As String = "_XLCH_Excluded"
-' NOTE: NAME_EXCLUDED is a workbook-scoped defined name. When present and
-' set to 1, the workbook is excluded from highlighting entirely. This lets
-' the exclusion travel with the file itself rather than living in registry.
-Public Const NAME_SHEET_EXCLUDED    As String = "_XLCH_SheetExcluded"
-' NOTE: NAME_SHEET_EXCLUDED is a worksheet-scoped defined name. When present
-' and set to 1 on a specific worksheet, that sheet is excluded from
-' highlighting while the rest of the workbook continues to work normally.
+Public Const NAME_ROW_PREFIX        As String = "XLCH_Row"
+Public Const NAME_ROW_END_PREFIX    As String = "XLCH_RowEnd"
+Public Const NAME_COL_PREFIX        As String = "XLCH_Col"
+Public Const NAME_COL_END_PREFIX    As String = "XLCH_ColEnd"
+Public Const NAME_EXCLUDED          As String = "XLCH_Excluded"
+Public Const NAME_SHEET_EXCLUDED    As String = "XLCH_SheetExcluded"
 
 ' --- Highlight modes ------------------------------------------------------------
 Public Enum HighlightMode

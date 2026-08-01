@@ -193,7 +193,7 @@ Public Function CreateDynamicColourSwatch(ByVal rgbColour As Long) As Object
 
     Dim iPictureGUID As GUID
     With iPictureGUID
-        .Data1 = &H7BF80980
+        .Data1 = CLng("&H7BF80980")
         .Data2 = &HBF32
         .Data3 = &H101A
         .Data4(0) = &H8B

@@ -3,7 +3,7 @@
           onLoad="onLoad">
   <ribbon>
     <tabs>
-      <tab id="tabHighlighter" label="Highlighter" insertAfterMso="TabHome">
+      <tab id="tabHighlighter" label="Highlighter">
 
         <!-- ================= Controls group ================= -->
         <group id="grpControls" label="Controls">

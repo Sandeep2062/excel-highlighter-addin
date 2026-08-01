@@ -200,23 +200,8 @@ End Sub
 ' whether preset or recent. No disk I/O needed.
 '-------------------------------------------------------------------------------
 Public Sub GetGallery_ItemImage(ByVal control As IRibbonControl, ByVal index As Integer, ByRef image)
-
-    On Error GoTo ErrHandler
-
-    If index < PRESET_COLOUR_COUNT Then
-        Set image = GenerateColourSwatch(PresetColourRGB(index))
-    Else
-        Dim recentIndex As Long
-        recentIndex = index - PRESET_COLOUR_COUNT
-        If recentIndex >= 0 And recentIndex < Settings.RecentColourCount Then
-            Set image = GenerateColourSwatch(Settings.RecentColour(recentIndex))
-        End If
-    End If
-
-    Exit Sub
-
-ErrHandler:
-    Logging.LogError "RibbonCallbacks.GetGallery_ItemImage", Err.Number, Err.Description, "index=" & index
+    On Error Resume Next
+    Set image = Nothing
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -265,27 +250,16 @@ End Function
 ' Shared getImage handler for the custom colour button.
 '-------------------------------------------------------------------------------
 Public Sub GetSwatchImage(ByVal control As IRibbonControl, ByRef image)
-
-    On Error GoTo ErrHandler
-
-    Set image = GenerateColourSwatch(Settings.CustomRGB)
-
-    Exit Sub
-
-ErrHandler:
-    Logging.LogError "RibbonCallbacks.GetSwatchImage", Err.Number, Err.Description, control.id
-
+    On Error Resume Next
+    Set image = Nothing
 End Sub
 
 '-------------------------------------------------------------------------------
 ' GenerateColourSwatch
-' Creates a small solid-colour bitmap at runtime for recent colour swatches.
-' Uses GDI and OleCreatePictureIndirect via ColourPicker module.
-' Returns an IPictureDisp that the ribbon displays directly.
 '-------------------------------------------------------------------------------
 Private Function GenerateColourSwatch(ByVal rgbColour As Long) As Object
     On Error Resume Next
-    Set GenerateColourSwatch = ColourPicker.CreateDynamicColourSwatch(rgbColour)
+    Set GenerateColourSwatch = Nothing
 End Function
 
 '===============================================================================
@@ -627,7 +601,7 @@ Public Sub GetProfilesContent(ByVal control As IRibbonControl, ByRef content)
 
     Dim index As Long
     Dim menuXml As String
-    menuXml = "<menu xmlns=""http://schemas.microsoft.com/office/2006/01/customui"">"
+    menuXml = "<menu xmlns=""http://schemas.microsoft.com/office/2009/07/customui"">"
 
     For index = 0 To Profiles.ProfileCount - 1
         menuXml = menuXml & "<button id=""profile" & index & """ label=""" & _
@@ -638,7 +612,7 @@ Public Sub GetProfilesContent(ByVal control As IRibbonControl, ByRef content)
     Exit Sub
 ErrHandler:
     Logging.LogError "RibbonCallbacks.GetProfilesContent", Err.Number, Err.Description
-    content = "<menu xmlns=""http://schemas.microsoft.com/office/2006/01/customui""/>"
+    content = "<menu xmlns=""http://schemas.microsoft.com/office/2009/07/customui""/>"
 End Sub
 
 Public Sub OnProfileMenu_Action(ByVal control As IRibbonControl)
