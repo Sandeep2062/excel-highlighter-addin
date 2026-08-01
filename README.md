@@ -28,87 +28,46 @@ nothing highlighter-related ends up saved in the file's own formatting.
 - No VBA project password, no hidden macros required in your own workbooks.
 - Designed to degrade gracefully on protected sheets and chart sheets rather than throwing errors at you.
 
-## How it works, briefly
+## How it works
 
-Four hidden, workbook-scoped defined names (`_XLCH_Row`, `_XLCH_RowEnd`, `_XLCH_Col`, `_XLCH_ColEnd`) hold the active selection bounds as plain numbers. Conditional formatting rules on each worksheet reference those names (`=AND(ROW()>=_XLCH_Row,ROW()<ShortEnd)`, etc.). Moving the active cell or selecting merged ranges updates the four names - a cheap operation - rather than adding or removing formatting rules on every keystroke. The CF rules themselves are only (re)built the first time a sheet is visited, or when you change mode, colour, style, or options from the ribbon.
+The add-in creates four hidden, workbook-scoped defined names (`XLCH_Row`, `XLCH_RowEnd`, `XLCH_Col`, `XLCH_ColEnd`) that store the active selection bounds as plain numbers. Temporary non-destructive Conditional Formatting rules are applied to each active worksheet referencing those defined names (`=AND(ROW()>=XLCH_Row,ROW()<=XLCH_RowEnd)`). 
 
-See [docs/architecture.md](docs/architecture.md) for the full picture, including why the highlight range is bounded rather than applied to entire 1,048,576-row sheets.
+When you move your selection or pick merged cells, the defined names are updated instantaneously—a lightweight, non-blocking operation—without constantly deleting and re-creating formatting rules on every arrow key press or mouse click.
 
-## User Guide & Documentation
+### Key Functions & Integration
 
-For a comprehensive step-by-step feature reference, shortcuts, and usage examples, see [docs/user-guide.md](docs/user-guide.md).
+- **Toggle Modes**: Switch seamlessly between **Row**, **Column**, **Crosshair** (both row and column), **Cell** (active cell focus), or **Off**.
+- **Keyboard Shortcuts**: Press **`Ctrl + Shift + H`** anytime in Excel to toggle highlighting on or off globally.
+- **Right-Click Context Menu**: Right-clicking any cell in Excel provides a native **Toggle Highlighter (Ctrl+Shift+H)** context menu item for instant access.
+- **Per-Mode Colours**: Enable different colors for rows and columns simultaneously in Crosshair mode.
+- **Dark Mode Tinting**: Automatically adjusts color saturation for comfortable reading on dark Office themes.
+- **Selection Navigation History**: Jump backward (`Ctrl+Shift+Z`) and forward (`Ctrl+Shift+X`) across recent cell locations.
+- **Workbook & Sheet Exclusions**: Exclude specific workbooks or sheets from highlighting via Ribbon toggles.
 
-Quick reference:
-- **Toggle Highlight**: Click **Highlight: On / Off** on the Ribbon or press `Ctrl+Shift+H` (configurable).
-- **Mode Selection**: Click **Row**, **Column**, **Crosshair**, or **Cell**.
-- **Per-Mode Colours**: Toggle **Per-Mode Colours** in the Appearance group, then pick separate colours for row and column.
-- **Navigate Cell History**: Press `Ctrl+Shift+Z` (back) or `Ctrl+Shift+X` (forward) - both configurable.
-- **Dark Mode**: Click **Dark Mode** under Options for comfortable dark-theme reading.
+See [docs/architecture.md](docs/architecture.md) for full architectural details.
 
-## Installation
+## Ongoing Issues & Technical Considerations
 
-- **Option 1 (Recommended 1-Click)**: Double-click `install.bat` (or run `install.ps1` in PowerShell). It automatically builds `excel-highlighter.xlam`, copies the add-in and `images/` icons to `%APPDATA%\Microsoft\AddIns\ExcelHighlighter`, activates it in the Windows Registry for Excel, and clears Excel's ribbon cache so the Highlighter tab appears immediately.
-- **Option 2 (Manual)**: See [docs/installation.md](docs/installation.md) for step-by-step instructions.
+Here are known technical behaviors, platform-specific edge cases, and active considerations:
 
-**Ribbon tab not appearing?** The installer now clears Excel's `.officeUI` cache automatically. If you still don't see the Highlighter tab after installation: close Excel completely, re-run `install.bat`, then open Excel again.
+1. **64-Bit Office Win32 GDI Callback Crash (Resolved via `imageMso`)**:
+   - *Issue*: On 64-bit Office 2021/2024/365, dynamic Ribbon GDI image generation via `OleCreatePictureIndirect` throws a COM exception (`0x8000FFFF E_UNEXPECTED`), which causes Excel's RibbonX engine to silently abort loading the custom tab.
+   - *Mitigation*: The custom UI definition (`customUI14.xml`) uses native Office `imageMso` icons (`ColorPalette`, `DiagramColorToggle`), and GDI callbacks have fail-safe error trapping to ensure the Ribbon tab renders reliably on all 32-bit and 64-bit Office builds.
 
-**Publisher column blank in Excel's Add-ins dialog?** Excel derives that field from the VBA project's digital signature, not from document properties. After installing, run `scripts/sign-xlam.ps1` once to sign the add-in with a self-signed "Sandeep Khadka" certificate - see [docs/installation.md](docs/installation.md) (Option D).
+2. **Defined Name Syntax Rules in Modern Excel 2021/2024**:
+   - *Issue*: Modern Excel defined-name parsers reject names with leading underscores combined with R1C1 tokens (such as `_XLCH_Row` or `_XLCH_Col`), throwing `Run-time error 1004: The syntax of this name isn't correct`.
+   - *Mitigation*: Defined name constants use the clean `XLCH_` prefix (`XLCH_Row`, `XLCH_RowEnd`, `XLCH_Col`, `XLCH_ColEnd`, `XLCH_Excluded`, `XLCH_SheetExcluded`).
 
-To uninstall anytime, double-click `uninstall.bat` (or run `uninstall.ps1`).
+3. **VBA "Break on All Errors" Mode Compatibility**:
+   - *Issue*: If Excel's VBA Editor option is set to *Break on All Errors* (*Tools -> Options -> General*), direct key lookup like `wb.Names("non_existent_name")` halts execution even under `On Error Resume Next`.
+   - *Mitigation*: All defined-name lookups utilize `GetNameObject` safe collection iteration (`For Each n In wb.Names`), guaranteeing zero unhandled exceptions regardless of VBA IDE error trapping settings.
 
-## Folder structure
+4. **Bounded Range Optimization**:
+   - *Issue*: The highlight range is deliberately bounded to `UsedRange ∪ VisibleRange` to prevent performance degradation on 1,048,576-row spreadsheets.
+   - *Behavior*: On sheets with sparse data separated by thousands of empty rows, scrolling deep into unpopulated areas might not show the highlight until you select a cell or interact with that area.
 
-```
-excel-highlighter-addin/
-├── src/                      VBA source, exported as text (.cls / .bas)
-│   ├── ThisWorkbook.cls       add-in workbook lifecycle
-│   ├── AddinHost.bas          owns the EventApp instance's lifetime
-│   ├── EventApp.cls           Application-level WithEvents sink
-│   ├── HighlightEngine.bas    conditional-formatting overlay logic
-│   ├── RibbonCallbacks.bas    every customUI14.xml callback
-│   ├── Settings.bas           persisted preferences (SaveSetting/GetSetting)
-│   ├── ColourPicker.bas       Windows Common Dialog API & GDI swatch generator
-│   ├── SelectionHistory.bas    cell navigation history stack
-│   ├── Profiles.bas           named settings profiles
-│   ├── Utilities.bas          small stateless helpers
-│   ├── Logging.bas            file-based error/info logging
-│   └── Constants.bas          shared literals and enums
-├── customUI/
-│   ├── customUI14.xml         RibbonX definition (Office 2010+ / customUI14)
-│   └── images/                colour swatch PNGs loaded by the ribbon
-├── docs/
-│   ├── user-guide.md          complete feature & usage reference guide
-│   ├── installation.md        installation & troubleshooting guide
-│   ├── architecture.md        technical architecture & performance notes
-│   └── future-features.md     project roadmap & feature backlog
-├── scripts/                   PowerShell helpers for exporting/importing
-│                               the VBA project and building the .xlam
-├── tests/
-│   └── manual-test-checklist.md
-├── CHANGELOG.md
-├── LICENSE
-└── README.md
-```
-
-## Development workflow
-
-The VBA project itself lives inside `excel-highlighter.xlam`, which is a binary Office file and isn't diff-friendly in git. The `.cls`/`.bas` files under `src/` are the text-exported source of truth:
-
-1. Open the `.xlam` in Excel, make your changes in the VBA editor (Alt+F11).
-2. Run `scripts/export-vba.ps1` to write the current VBA project back out to `src/` as text.
-3. Commit the exported text files.
-
-Going the other direction (text → binary) after a fresh checkout:
-
-1. Run `scripts/build-xlam.ps1`, which creates a blank `.xlam`, imports every module from `src/`, sets the RibbonX customization from `customUI/customUI14.xml`, and saves it.
-
-Both scripts drive Excel via its COM object model (`CreateObject("Excel.Application")`) and the VBA Extensibility library, so Excel needs to be installed on the machine running them, and "Trust access to the VBA project object model" needs to be enabled under Excel Options → Trust Center → Macro Settings.
-
-## Known limitations
-
-- The highlight is bounded to each sheet's used range plus whatever is currently visible on screen, not the entire 1,048,576 × 16,384 grid. On a sheet with very sparse, widely separated data, scrolling into a completely empty area far from both isn't highlighted until you interact with it. See `docs/architecture.md` for the reasoning.
-- Conditional formatting rules count against Excel's per-sheet CF limit. This add-in only ever adds one to three rules per sheet, but if a workbook already has an unusually large number of existing rules from other sources, adding ours could push it toward that ceiling.
-- Sheets protected without "Allow formatting cells" enabled won't be highlighted unless "Allow Protected" mode is enabled in the Options group.
+5. **Protected Worksheets**:
+   - *Behavior*: Worksheets protected without the "Allow formatting cells" permission cannot accept conditional formatting overlay rules unless **Allow Protected** mode is toggled ON in the add-in options.
 
 ## Roadmap
 
