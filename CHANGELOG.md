@@ -3,6 +3,38 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Digital signing script** (`scripts/sign-xlam.ps1`) - creates a self-signed
+  "Sandeep Khadka" code-signing certificate and signs the VBA project so the
+  Publisher column in Excel's Add-ins dialog shows the publisher's name
+  instead of being blank. See docs/installation.md, Option D.
+
+### Fixed
+- **Stale VBA signature after signing** - Excel silently invalidates the
+  VBA signature whenever it re-saves the add-in after signing (the
+  "Remove personal information from file properties on save" privacy
+  option is a known trigger), which is why the Publisher column could
+  still come up blank. `sign-xlam.ps1` now verifies the signature
+  cryptographically (digest inside `xl/vbaProjectSignature.bin` must
+  match the current `xl/vbaProject.bin` bytes) and locks the signed
+  add-in file read-only so Excel cannot re-save and break it again
+  (`-NoLock` opt-out).
+- **Add-in registered read-only** - the installer wrote the Excel `OPEN`
+  registry value with a `/R` flag, so Excel always loaded the add-in in
+  read-only mode. That silently blocked saving after signing the VBA
+  project ("file is read-only"), which is why the Publisher name never
+  stuck. The installer now registers the add-in without `/R`, and any
+  existing `/R` flag is stripped.
+- **Signing script verification** - the script now verifies the signature
+  from the saved file itself (`xl/vbaProjectSignature*.bin` inside the
+  .xlam) instead of trusting Excel's in-memory `VBProject.Signed` property,
+  which is a known false-negative source. Also added a file-lock pre-flight
+  check (refuses to run while Excel holds the add-in open, preventing the
+  `RPC_E_DISCONNECTED` crash on save) and a crash-forgiving save that still
+  verifies the file if the Excel COM instance dies mid-save.
+
 ## [1.4.0] - 2026-07-29
 
 ### Added

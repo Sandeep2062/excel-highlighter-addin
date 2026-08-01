@@ -51,11 +51,6 @@ Public Const NAME_SHEET_EXCLUDED    As String = "_XLCH_SheetExcluded"
 ' and set to 1 on a specific worksheet, that sheet is excluded from
 ' highlighting while the rest of the workbook continues to work normally.
 
-' A marker written into a custom document property so we can recognise
-' worksheets/workbooks that already have our conditional formatting applied,
-' and so cleanup can find every rule that belongs to us.
-Public Const CF_TAG                 As String = "XLCH"
-
 ' --- Highlight modes ------------------------------------------------------------
 Public Enum HighlightMode
     hmNone = 0

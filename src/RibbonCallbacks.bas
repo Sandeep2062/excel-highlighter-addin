@@ -5,15 +5,18 @@ Attribute VB_Name = "RibbonCallbacks"
 '             thin - callbacks read/write Settings and HighlightEngine, they
 '             never contain highlighting logic themselves.
 '
-'             Image loading: the colour gallery uses real PNG swatches
-'             shipped in the "images" folder next to the .xlam (see
-'             docs/installation.md). getImage callbacks load them with
-'             LoadPicture, which is the simplest reliable way to supply
-'             custom ribbon images without building an OPC image part.
+'             Image loading: colour swatches are generated in memory as
+'             solid-colour bitmaps via ColourPicker.CreateDynamicColourSwatch
+'             (GDI + OleCreatePictureIndirect). No external PNG files are
+'             needed - every gallery item and the custom colour button get
+'             their image from a single shared helper.
 '===============================================================================
 Option Explicit
 
 Private mRibbon As IRibbonUI
+
+' The number of preset colours in the gallery.
+Private Const PRESET_COLOUR_COUNT As Long = 7
 
 '-------------------------------------------------------------------------------
 ' onLoad
@@ -55,7 +58,7 @@ End Sub
 
 Public Sub OnToggle_Action(ByVal control As IRibbonControl, ByVal pressed As Boolean)
     On Error GoTo ErrHandler
-    Settings.Enabled = pressed
+    Settings.enabled = pressed
     HighlightEngine.ReapplyAllOpenWorkbooks
     InvalidateRibbon
     Exit Sub
@@ -64,11 +67,11 @@ ErrHandler:
 End Sub
 
 Public Sub GetToggle_Pressed(ByVal control As IRibbonControl, ByRef pressed)
-    pressed = Settings.Enabled
+    pressed = Settings.enabled
 End Sub
 
 Public Sub GetToggle_Label(ByVal control As IRibbonControl, ByRef label)
-    label = IIf(Settings.Enabled, "Highlight: On", "Highlight: Off")
+    label = IIf(Settings.enabled, "Highlight: On", "Highlight: Off")
 End Sub
 
 '===============================================================================
@@ -80,7 +83,7 @@ Public Sub OnMode_Action(ByVal control As IRibbonControl, ByVal pressed As Boole
     On Error GoTo ErrHandler
 
     Dim requestedMode As HighlightMode
-    requestedMode = ModeForControlId(control.ID)
+    requestedMode = ModeForControlId(control.id)
 
     If pressed Then
         Settings.Mode = requestedMode
@@ -98,11 +101,11 @@ ErrHandler:
 End Sub
 
 Public Sub GetMode_Pressed(ByVal control As IRibbonControl, ByRef pressed)
-    pressed = (Settings.Mode = ModeForControlId(control.ID))
+    pressed = (Settings.Mode = ModeForControlId(control.id))
 End Sub
 
 Public Sub GetMode_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 Private Function ModeForControlId(ByVal controlId As String) As HighlightMode
@@ -123,26 +126,20 @@ End Function
 ' Total item count = 7 + recentCount
 '===============================================================================
 
-' The number of preset colours in the gallery.
-Private Const PRESET_COLOUR_COUNT As Long = 7
-
 Public Sub OnGallery_Action(ByVal control As IRibbonControl, ByVal id As String, ByVal index As Integer)
 
     On Error GoTo ErrHandler
 
     If Left$(id, 4) = "item" Then
         ' Preset colour selected.
-        Settings.Colour = ColourFromString(Mid$(id, 5))
+        Settings.colour = ColourFromString(Mid$(id, 5))
     ElseIf Left$(id, 6) = "recent" Then
         ' Recent colour selected. Apply it as custom.
         Dim recentIndex As Long
         recentIndex = CLng(Mid$(id, 7))
-        Dim recentRGB As Long
-        Dim colours As Long
-        colours = Settings.RecentColours
         If recentIndex >= 0 And recentIndex < Settings.RecentColourCount Then
-            Settings.CustomRGB = Settings.RecentColours(recentIndex)
-            Settings.Colour = hcCustom
+            Settings.CustomRGB = Settings.RecentColour(recentIndex)
+            Settings.colour = hcCustom
         End If
     End If
 
@@ -155,17 +152,17 @@ ErrHandler:
 End Sub
 
 Public Sub GetGallery_SelectedItemID(ByVal control As IRibbonControl, ByRef id)
-    If Settings.Colour = hcCustom Then
+    If Settings.colour = hcCustom Then
         ' Custom colour - select Nothing (no preset), or highlight the
         ' first recent colour that matches.
         id = ""
     Else
-        id = "item" & ColourName(Settings.Colour)
+        id = "item" & ColourName(Settings.colour)
     End If
 End Sub
 
 Public Sub GetGallery_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -199,28 +196,20 @@ End Sub
 
 '-------------------------------------------------------------------------------
 ' getItemImage
-' For presets: loads the PNG from disk. For recent colours: generates a
-' coloured bitmap in memory since we don't have a PNG for arbitrary RGB.
+' Generates a solid-colour bitmap swatch in memory for every gallery item,
+' whether preset or recent. No disk I/O needed.
 '-------------------------------------------------------------------------------
 Public Sub GetGallery_ItemImage(ByVal control As IRibbonControl, ByVal index As Integer, ByRef image)
 
     On Error GoTo ErrHandler
 
     If index < PRESET_COLOUR_COUNT Then
-        ' Load preset PNG from disk.
-        Dim path As String
-        path = ImagesFolder() & LCase$(PresetColourName(index)) & ".png"
-        If Len(Dir$(path)) > 0 Then
-            Set image = LoadPicture(path)
-        End If
+        Set image = GenerateColourSwatch(PresetColourRGB(index))
     Else
-        ' Generate a coloured image for recent colours.
         Dim recentIndex As Long
         recentIndex = index - PRESET_COLOUR_COUNT
         If recentIndex >= 0 And recentIndex < Settings.RecentColourCount Then
-            Dim rgbVal As Long
-            rgbVal = Settings.RecentColours(recentIndex)
-            Set image = GenerateColourSwatch(rgbVal)
+            Set image = GenerateColourSwatch(Settings.RecentColour(recentIndex))
         End If
     End If
 
@@ -258,36 +247,35 @@ Private Function PresetColourName(ByVal index As Integer) As String
     End Select
 End Function
 
+Private Function PresetColourRGB(ByVal index As Integer) As Long
+    Select Case index
+        Case 0: PresetColourRGB = RGB_YELLOW
+        Case 1: PresetColourRGB = RGB_GREEN
+        Case 2: PresetColourRGB = RGB_ORANGE
+        Case 3: PresetColourRGB = RGB_CYAN
+        Case 4: PresetColourRGB = RGB_BLUE
+        Case 5: PresetColourRGB = RGB_PINK
+        Case 6: PresetColourRGB = RGB_GREY
+        Case Else: PresetColourRGB = RGB_YELLOW
+    End Select
+End Function
+
 '-------------------------------------------------------------------------------
 ' GetSwatchImage
-' Shared getImage handler for the custom colour button (not the gallery items
-' themselves, which use getItemImage now).
+' Shared getImage handler for the custom colour button.
 '-------------------------------------------------------------------------------
 Public Sub GetSwatchImage(ByVal control As IRibbonControl, ByRef image)
 
     On Error GoTo ErrHandler
 
-    Dim path As String
-    If control.ID = CTRL_CUSTOM_COLOUR Then
-        path = ImagesFolder() & "custom.png"
-    Else
-        path = ImagesFolder() & LCase$(Mid$(control.ID, Len("item") + 1)) & ".png"
-    End If
-
-    If Len(Dir$(path)) > 0 Then
-        Set image = LoadPicture(path)
-    End If
+    Set image = GenerateColourSwatch(Settings.CustomRGB)
 
     Exit Sub
 
 ErrHandler:
-    Logging.LogError "RibbonCallbacks.GetSwatchImage", Err.Number, Err.Description, control.ID
+    Logging.LogError "RibbonCallbacks.GetSwatchImage", Err.Number, Err.Description, control.id
 
 End Sub
-
-Private Function ImagesFolder() As String
-    ImagesFolder = ThisWorkbook.Path & Application.PathSeparator & "images" & Application.PathSeparator
-End Function
 
 '-------------------------------------------------------------------------------
 ' GenerateColourSwatch
@@ -313,7 +301,7 @@ Public Sub OnCustomColour_Action(ByVal control As IRibbonControl)
     ' xlDialogEditColor, which borrowed palette slot 56 from the workbook.
     If ColourPicker.PromptForCustomRGB(chosen, Settings.CustomRGB) Then
         Settings.CustomRGB = chosen
-        Settings.Colour = hcCustom
+        Settings.colour = hcCustom
         HighlightEngine.ReapplyAllOpenWorkbooks
         InvalidateRibbon
     End If
@@ -356,13 +344,13 @@ Public Sub OnExcludeSheet_Action(ByVal control As IRibbonControl, ByVal pressed 
         ' Strip highlighting from this sheet immediately.
         HighlightEngine.RemoveOurConditionalFormatting ws
         HighlightEngine.UntrackSheet ws.Parent, ws
-        Logging.LogInfo "RibbonCallbacks.OnExcludeSheet_Action", "Excluded sheet " & ws.Name
+        Logging.LogInfo "RibbonCallbacks.OnExcludeSheet_Action", "Excluded sheet " & ws.name
     Else
         ' Re-enable highlighting on this sheet.
-        If Settings.Enabled And Settings.Mode <> hmNone Then
+        If Settings.enabled And Settings.Mode <> hmNone Then
             HighlightEngine.RebuildConditionalFormatting ws
         End If
-        Logging.LogInfo "RibbonCallbacks.OnExcludeSheet_Action", "Un-excluded sheet " & ws.Name
+        Logging.LogInfo "RibbonCallbacks.OnExcludeSheet_Action", "Un-excluded sheet " & ws.name
     End If
     InvalidateRibbon
     Exit Sub
@@ -422,10 +410,10 @@ Public Sub OnExclude_Action(ByVal control As IRibbonControl, ByVal pressed As Bo
         Next ws
         Utilities.SafeDeleteName wb, NAME_ROW_PREFIX
         Utilities.SafeDeleteName wb, NAME_COL_PREFIX
-        Logging.LogInfo "RibbonCallbacks.OnExclude_Action", "Excluded " & wb.Name
+        Logging.LogInfo "RibbonCallbacks.OnExclude_Action", "Excluded " & wb.name
     Else
         ' Re-enable highlighting on this workbook.
-        If Settings.Enabled And Settings.Mode <> hmNone Then
+        If Settings.enabled And Settings.Mode <> hmNone Then
             HighlightEngine.EnsureNamesExist wb
             On Error Resume Next
             If TypeOf wb.ActiveSheet Is Worksheet Then
@@ -433,7 +421,7 @@ Public Sub OnExclude_Action(ByVal control As IRibbonControl, ByVal pressed As Bo
             End If
             On Error GoTo ErrHandler
         End If
-        Logging.LogInfo "RibbonCallbacks.OnExclude_Action", "Un-excluded " & wb.Name
+        Logging.LogInfo "RibbonCallbacks.OnExclude_Action", "Un-excluded " & wb.name
     End If
     InvalidateRibbon
     Exit Sub
@@ -485,7 +473,7 @@ End Sub
 Public Sub OnStyle_Action(ByVal control As IRibbonControl, ByVal pressed As Boolean)
     On Error GoTo ErrHandler
     Dim requestedStyle As HighlightStyle
-    requestedStyle = StyleForControlId(control.ID)
+    requestedStyle = StyleForControlId(control.id)
     Settings.HighlightStyle = requestedStyle
     HighlightEngine.ReapplyAllOpenWorkbooks
     InvalidateRibbon
@@ -495,11 +483,11 @@ ErrHandler:
 End Sub
 
 Public Sub GetStyle_Pressed(ByVal control As IRibbonControl, ByRef pressed)
-    pressed = (Settings.HighlightStyle = StyleForControlId(control.ID))
+    pressed = (Settings.HighlightStyle = StyleForControlId(control.id))
 End Sub
 
 Public Sub GetStyle_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 Private Function StyleForControlId(ByVal controlId As String) As HighlightStyle
@@ -529,7 +517,7 @@ Public Sub GetIntersection_Pressed(ByVal control As IRibbonControl, ByRef presse
 End Sub
 
 Public Sub GetIntersection_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 '===============================================================================
@@ -551,7 +539,7 @@ Public Sub GetAllowProtected_Pressed(ByVal control As IRibbonControl, ByRef pres
 End Sub
 
 Public Sub GetAllowProtected_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 '===============================================================================
@@ -573,7 +561,7 @@ Public Sub GetAnimated_Pressed(ByVal control As IRibbonControl, ByRef pressed)
 End Sub
 
 Public Sub GetAnimated_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 '===============================================================================
@@ -595,7 +583,7 @@ Public Sub GetDarkMode_Pressed(ByVal control As IRibbonControl, ByRef pressed)
 End Sub
 
 Public Sub GetDarkMode_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 '===============================================================================
@@ -643,7 +631,7 @@ Public Sub GetProfilesContent(ByVal control As IRibbonControl, ByRef content)
 
     For index = 0 To Profiles.ProfileCount - 1
         menuXml = menuXml & "<button id=""profile" & index & """ label=""" & _
-                  EscapeRibbonXml(Profiles.ProfileName(index)) & """ onAction=""RibbonCallbacks.OnProfileMenu_Action""/>"
+                      EscapeRibbonXml(Profiles.ProfileName(index)) & """ onAction=""OnProfileMenu_Action""/>"
     Next index
 
     content = menuXml & "</menu>"
@@ -657,7 +645,7 @@ Public Sub OnProfileMenu_Action(ByVal control As IRibbonControl)
     On Error GoTo ErrHandler
 
     Dim index As Long
-    index = CLng(Mid$(control.ID, Len("profile") + 1))
+    index = CLng(Mid$(control.id, Len("profile") + 1))
     Profiles.ApplyProfile index
     HighlightEngine.ReapplyAllOpenWorkbooks
     InvalidateRibbon
@@ -667,7 +655,7 @@ ErrHandler:
 End Sub
 
 Public Sub GetProfile_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 Private Function EscapeRibbonXml(ByVal value As String) As String
@@ -715,33 +703,33 @@ Public Sub GetPerModeColours_Pressed(ByVal control As IRibbonControl, ByRef pres
 End Sub
 
 Public Sub GetPerModeColours_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled
+    enabled = Settings.enabled
 End Sub
 
 Public Sub GetRowColourGallery_Enabled(ByVal control As IRibbonControl, ByRef enabled)
-    enabled = Settings.Enabled And Settings.PerModeColours
+    enabled = Settings.enabled And Settings.PerModeColours
 End Sub
 
 Public Sub GetRowColour_SelectedItemID(ByVal control As IRibbonControl, ByRef id)
-    If Settings.RowColour = hcCustom Then
+    If Settings.rowColour = hcCustom Then
         id = ""
     Else
-        id = "item" & ColourName(Settings.RowColour)
+        id = "item" & ColourName(Settings.rowColour)
     End If
 End Sub
 
 Public Sub GetColColour_SelectedItemID(ByVal control As IRibbonControl, ByRef id)
-    If Settings.ColColour = hcCustom Then
+    If Settings.colColour = hcCustom Then
         id = ""
     Else
-        id = "item" & ColourName(Settings.ColColour)
+        id = "item" & ColourName(Settings.colColour)
     End If
 End Sub
 
 Public Sub OnRowColour_Action(ByVal control As IRibbonControl, ByVal id As String, ByVal index As Integer)
     On Error GoTo ErrHandler
     If Left$(id, 4) = "item" Then
-        Settings.RowColour = ColourFromString(Mid$(id, 5))
+        Settings.rowColour = ColourFromString(Mid$(id, 5))
     End If
     HighlightEngine.ReapplyAllOpenWorkbooks
     InvalidateRibbon
@@ -753,7 +741,7 @@ End Sub
 Public Sub OnColColour_Action(ByVal control As IRibbonControl, ByVal id As String, ByVal index As Integer)
     On Error GoTo ErrHandler
     If Left$(id, 4) = "item" Then
-        Settings.ColColour = ColourFromString(Mid$(id, 5))
+        Settings.colColour = ColourFromString(Mid$(id, 5))
     End If
     HighlightEngine.ReapplyAllOpenWorkbooks
     InvalidateRibbon

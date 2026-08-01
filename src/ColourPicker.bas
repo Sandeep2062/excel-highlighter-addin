@@ -202,7 +202,7 @@ Public Function CreateDynamicColourSwatch(ByVal rgbColour As Long) As Object
         .Data4(3) = &HAA
         .Data4(4) = &H0
         .Data4(5) = &H30
-        .Data4(6) = &H0C
+        .Data4(6) = &HC
         .Data4(7) = &HAB
     End With
 
@@ -247,12 +247,9 @@ End Sub
 '-------------------------------------------------------------------------------
 #If VBA7 Then
 Private Function GetExcelHWND() As LongPtr
-    On Error Resume Next
-    GetExcelHWND = FindWindow("XLMAIN", vbNullString)
-End Function
 #Else
 Private Function GetExcelHWND() As Long
+#End If
     On Error Resume Next
     GetExcelHWND = FindWindow("XLMAIN", vbNullString)
 End Function
-#End If

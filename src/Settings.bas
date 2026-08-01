@@ -49,26 +49,26 @@ Private Sub EnsureLoaded()
 
     On Error GoTo Fail
 
-    mEnabled       = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ENABLED, "False"))
-    mMode          = ModeFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_MODE, "CROSSHAIR"))
-    mColour        = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COLOUR_NAME, "YELLOW"))
-    mCustomRGB     = CLng(GetSetting(APP_NAME, SECTION_GENERAL, KEY_CUSTOM_RGB, CStr(RGB_YELLOW)))
+    mEnabled = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ENABLED, "False"))
+    mMode = ModeFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_MODE, "CROSSHAIR"))
+    mColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COLOUR_NAME, "YELLOW"))
+    mCustomRGB = CLng(GetSetting(APP_NAME, SECTION_GENERAL, KEY_CUSTOM_RGB, CStr(RGB_YELLOW)))
     mAllowProtected = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ALLOW_PROTECTED, "False"))
     mHighlightStyle = CInt(GetSetting(APP_NAME, SECTION_GENERAL, KEY_HIGHLIGHT_STYLE, "0"))
-    mIntersection  = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_INTERSECTION, "False"))
+    mIntersection = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_INTERSECTION, "False"))
     mIntersectionRGB = CLng(GetSetting(APP_NAME, SECTION_GENERAL, KEY_INTERSECTION_RGB, CStr(RGB_YELLOW)))
-    mAnimated      = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ANIMATED, "False"))
-    mDarkMode      = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_DARK_MODE, "False"))
+    mAnimated = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ANIMATED, "False"))
+    mDarkMode = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_DARK_MODE, "False"))
 
     ' Configurable hotkeys - fall back to defaults if not set in registry.
-    mHotkeyToggle      = GetSetting(APP_NAME, SECTION_GENERAL, KEY_HOTKEY_TOGGLE, DEFAULT_HOTKEY_TOGGLE)
+    mHotkeyToggle = GetSetting(APP_NAME, SECTION_GENERAL, KEY_HOTKEY_TOGGLE, DEFAULT_HOTKEY_TOGGLE)
     mHotkeyHistoryBack = GetSetting(APP_NAME, SECTION_GENERAL, KEY_HOTKEY_HISTORY_BACK, DEFAULT_HOTKEY_HISTORY_BACK)
-    mHotkeyHistoryFwd  = GetSetting(APP_NAME, SECTION_GENERAL, KEY_HOTKEY_HISTORY_FWD, DEFAULT_HOTKEY_HISTORY_FWD)
+    mHotkeyHistoryFwd = GetSetting(APP_NAME, SECTION_GENERAL, KEY_HOTKEY_HISTORY_FWD, DEFAULT_HOTKEY_HISTORY_FWD)
 
     ' Per-mode colours for Crosshair mode (row vs column can differ).
     mPerModeColours = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_PER_MODE_COLOURS, "False"))
-    mRowColour      = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ROW_COLOUR, "YELLOW"))
-    mColColour      = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COL_COLOUR, "YELLOW"))
+    mRowColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ROW_COLOUR, "YELLOW"))
+    mColColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COL_COLOUR, "YELLOW"))
 
     LoadRecentColours
 
@@ -90,12 +90,12 @@ End Sub
 '-------------------------------------------------------------------------------
 ' Enabled - Get/Let
 '-------------------------------------------------------------------------------
-Public Property Get Enabled() As Boolean
+Public Property Get enabled() As Boolean
     EnsureLoaded
-    Enabled = mEnabled
+    enabled = mEnabled
 End Property
 
-Public Property Let Enabled(ByVal value As Boolean)
+Public Property Let enabled(ByVal value As Boolean)
     EnsureLoaded
     mEnabled = value
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_ENABLED, CStr(value)
@@ -120,12 +120,12 @@ End Property
 '-------------------------------------------------------------------------------
 ' Colour - Get/Let
 '-------------------------------------------------------------------------------
-Public Property Get Colour() As HighlightColour
+Public Property Get colour() As HighlightColour
     EnsureLoaded
-    Colour = mColour
+    colour = mColour
 End Property
 
-Public Property Let Colour(ByVal value As HighlightColour)
+Public Property Let colour(ByVal value As HighlightColour)
     EnsureLoaded
     mColour = value
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_COLOUR_NAME, ColourName(value)
@@ -163,12 +163,27 @@ Public Property Get RecentColourCount() As Long
 End Property
 
 '-------------------------------------------------------------------------------
+' RecentColour - indexed accessor
+' Returns the RGB value at the given 0-based index, or 0 if out of range.
+' Use this instead of RecentColours()(index) - VBA cannot index directly into
+' a Property Get that returns an array.
+'-------------------------------------------------------------------------------
+Public Function RecentColour(ByVal index As Long) As Long
+    EnsureLoaded
+    If index >= 0 And index < mRecentCount Then
+        RecentColour = mRecentColours(index)
+    Else
+        RecentColour = 0
+    End If
+End Function
+
+'-------------------------------------------------------------------------------
 ' EffectiveRGB
 ' Convenience wrapper combining Colour + CustomRGB - this is what
 ' HighlightEngine asks for when per-mode colours are off.
 '-------------------------------------------------------------------------------
 Public Function EffectiveRGB() As Long
-    EffectiveRGB = ApplyDarkModeTint(ColourToRGB(Colour, CustomRGB))
+    EffectiveRGB = ApplyDarkModeTint(ColourToRGB(colour, CustomRGB))
 End Function
 
 '-------------------------------------------------------------------------------
@@ -179,7 +194,7 @@ End Function
 '-------------------------------------------------------------------------------
 Public Function EffectiveRowRGB() As Long
     If PerModeColours Then
-        EffectiveRowRGB = ApplyDarkModeTint(ColourToRGB(RowColour, CustomRGB))
+        EffectiveRowRGB = ApplyDarkModeTint(ColourToRGB(rowColour, CustomRGB))
     Else
         EffectiveRowRGB = EffectiveRGB
     End If
@@ -187,7 +202,7 @@ End Function
 
 Public Function EffectiveColRGB() As Long
     If PerModeColours Then
-        EffectiveColRGB = ApplyDarkModeTint(ColourToRGB(ColColour, CustomRGB))
+        EffectiveColRGB = ApplyDarkModeTint(ColourToRGB(colColour, CustomRGB))
     Else
         EffectiveColRGB = EffectiveRGB
     End If
@@ -362,24 +377,24 @@ Public Property Let PerModeColours(ByVal value As Boolean)
     Logging.LogInfo "Settings.PerModeColours", "Set to " & value
 End Property
 
-Public Property Get RowColour() As HighlightColour
+Public Property Get rowColour() As HighlightColour
     EnsureLoaded
-    RowColour = mRowColour
+    rowColour = mRowColour
 End Property
 
-Public Property Let RowColour(ByVal value As HighlightColour)
+Public Property Let rowColour(ByVal value As HighlightColour)
     EnsureLoaded
     mRowColour = value
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_ROW_COLOUR, ColourName(value)
     Logging.LogInfo "Settings.RowColour", "Set to " & ColourName(value)
 End Property
 
-Public Property Get ColColour() As HighlightColour
+Public Property Get colColour() As HighlightColour
     EnsureLoaded
-    ColColour = mColColour
+    colColour = mColColour
 End Property
 
-Public Property Let ColColour(ByVal value As HighlightColour)
+Public Property Let colColour(ByVal value As HighlightColour)
     EnsureLoaded
     mColColour = value
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_COL_COLOUR, ColourName(value)
@@ -471,9 +486,9 @@ End Sub
 ' Split out so ResetToDefaults reads cleanly; also makes it easy to unit-test
 ' the value assignment separately from the (unlikely to fail) error trap above.
 Private Sub Me_Enabled_ResetHelper()
-    Enabled = False
+    enabled = False
     Mode = hmCrosshair
-    Colour = hcYellow
+    colour = hcYellow
     CustomRGB = RGB_YELLOW
     AllowProtected = False
     HighlightStyle = hsFill
@@ -485,8 +500,8 @@ Private Sub Me_Enabled_ResetHelper()
     HotkeyHistoryBack = DEFAULT_HOTKEY_HISTORY_BACK
     HotkeyHistoryFwd = DEFAULT_HOTKEY_HISTORY_FWD
     PerModeColours = False
-    RowColour = hcYellow
-    ColColour = hcYellow
+    rowColour = hcYellow
+    colColour = hcYellow
     ' Clear recent colours on reset
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_RECENT_COLOURS, ""
     mRecentCount = 0

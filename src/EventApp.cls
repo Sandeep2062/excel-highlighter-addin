@@ -32,9 +32,9 @@ Attribute App.VB_VarHelpID = -1
 ' workbook. This is the hot path - see HighlightEngine.HandleSelectionChange
 ' for the performance notes.
 '-------------------------------------------------------------------------------
-Private Sub App_SheetSelectionChange(ByVal Sh As Object, ByVal target As Range)
+Private Sub App_SheetSelectionChange(ByVal sh As Object, ByVal target As Range)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleSelectionChange Sh, target
+    HighlightEngine.HandleSelectionChange sh, target
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_SheetSelectionChange", Err.Number, Err.Description
@@ -43,9 +43,9 @@ End Sub
 '-------------------------------------------------------------------------------
 ' App_WorkbookOpen
 '-------------------------------------------------------------------------------
-Private Sub App_WorkbookOpen(ByVal Wb As Workbook)
+Private Sub App_WorkbookOpen(ByVal wb As Workbook)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleWorkbookOpen Wb
+    HighlightEngine.HandleWorkbookOpen wb
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_WorkbookOpen", Err.Number, Err.Description
@@ -54,9 +54,9 @@ End Sub
 '-------------------------------------------------------------------------------
 ' App_WorkbookActivate
 '-------------------------------------------------------------------------------
-Private Sub App_WorkbookActivate(ByVal Wb As Workbook)
+Private Sub App_WorkbookActivate(ByVal wb As Workbook)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleWorkbookActivate Wb
+    HighlightEngine.HandleWorkbookActivate wb
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_WorkbookActivate", Err.Number, Err.Description
@@ -67,9 +67,9 @@ End Sub
 ' NOTE: WindowActivate gives us the workbook via Wb, not the window's sheet
 ' directly - the sheet-level work happens on the next SelectionChange.
 '-------------------------------------------------------------------------------
-Private Sub App_WindowActivate(ByVal Wb As Workbook, ByVal Wn As Window)
+Private Sub App_WindowActivate(ByVal wb As Workbook, ByVal wn As Window)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleWindowActivate Wb
+    HighlightEngine.HandleWindowActivate wb
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_WindowActivate", Err.Number, Err.Description
@@ -78,9 +78,9 @@ End Sub
 '-------------------------------------------------------------------------------
 ' App_SheetDeactivate
 '-------------------------------------------------------------------------------
-Private Sub App_SheetDeactivate(ByVal Sh As Object)
+Private Sub App_SheetDeactivate(ByVal sh As Object)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleSheetDeactivate Sh
+    HighlightEngine.HandleSheetDeactivate sh
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_SheetDeactivate", Err.Number, Err.Description
@@ -91,9 +91,9 @@ End Sub
 ' Cleans up names + conditional formatting for the closing workbook so
 ' nothing of ours survives in the saved file.
 '-------------------------------------------------------------------------------
-Private Sub App_WorkbookBeforeClose(ByVal Wb As Workbook, Cancel As Boolean)
+Private Sub App_WorkbookBeforeClose(ByVal wb As Workbook, Cancel As Boolean)
     On Error GoTo ErrHandler
-    HighlightEngine.HandleWorkbookBeforeClose Wb
+    HighlightEngine.HandleWorkbookBeforeClose wb
     Exit Sub
 ErrHandler:
     Logging.LogError "EventApp.App_WorkbookBeforeClose", Err.Number, Err.Description

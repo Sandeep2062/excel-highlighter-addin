@@ -11,7 +11,7 @@ Attribute VB_Name = "Profiles"
 Option Explicit
 
 Private Type ProfileEntry
-    Name        As String
+    name        As String
     ModeIndex   As Integer
     ColourIndex As Integer
     CustomRGB   As Long
@@ -34,7 +34,7 @@ Public Sub LoadProfiles()
         ' Create a default profile.
         mCount = 1
         ReDim mProfiles(0 To 0)
-        mProfiles(0).Name = "Default"
+        mProfiles(0).name = "Default"
         mProfiles(0).ModeIndex = hmCrosshair
         mProfiles(0).ColourIndex = hcYellow
         mProfiles(0).CustomRGB = RGB_YELLOW
@@ -49,7 +49,7 @@ Public Sub LoadProfiles()
         Dim i As Long, j As Long
         For i = 0 To mCount - 1
             j = i * 6
-            mProfiles(i).Name = lines(j)
+            mProfiles(i).name = lines(j)
             mProfiles(i).ModeIndex = CInt(lines(j + 1))
             mProfiles(i).ColourIndex = CInt(lines(j + 2))
             mProfiles(i).CustomRGB = CLng(lines(j + 3))
@@ -65,7 +65,7 @@ Private Sub SaveToRegistry()
     Dim i As Long
     For i = 0 To mCount - 1
         If Len(parts) > 0 Then parts = parts & "|"
-        parts = parts & mProfiles(i).Name & "|" & _
+        parts = parts & mProfiles(i).name & "|" & _
                 mProfiles(i).ModeIndex & "|" & _
                 mProfiles(i).ColourIndex & "|" & _
                 mProfiles(i).CustomRGB & "|" & _
@@ -83,22 +83,22 @@ Public Sub ApplyProfile(ByVal index As Integer)
     Dim p As ProfileEntry
     p = mProfiles(index)
     Settings.Mode = CInt(p.ModeIndex)
-    Settings.Colour = CInt(p.ColourIndex)
+    Settings.colour = CInt(p.ColourIndex)
     Settings.CustomRGB = p.CustomRGB
     Settings.HighlightStyle = CInt(p.StyleIndex)
     Settings.IntersectionEnabled = p.Intersect
-    mActiveName = p.Name
+    mActiveName = p.name
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_ACTIVE_PROFILE, mActiveName
-    Logging.LogInfo "Profiles.ApplyProfile", "Applied profile: " & p.Name
+    Logging.LogInfo "Profiles.ApplyProfile", "Applied profile: " & p.name
 End Sub
 
 Public Sub SaveCurrentAsProfile(ByVal name As String)
     ' Check for duplicates.
     Dim i As Long
     For i = 0 To mCount - 1
-        If LCase$(mProfiles(i).Name) = LCase$(name) Then
+        If LCase$(mProfiles(i).name) = LCase$(name) Then
             mProfiles(i).ModeIndex = Settings.Mode
-            mProfiles(i).ColourIndex = Settings.Colour
+            mProfiles(i).ColourIndex = Settings.colour
             mProfiles(i).CustomRGB = Settings.CustomRGB
             mProfiles(i).StyleIndex = Settings.HighlightStyle
             mProfiles(i).Intersect = Settings.IntersectionEnabled
@@ -111,9 +111,9 @@ Public Sub SaveCurrentAsProfile(ByVal name As String)
     Next i
     ' Add new profile.
     ReDim Preserve mProfiles(0 To mCount)
-    mProfiles(mCount).Name = name
+    mProfiles(mCount).name = name
     mProfiles(mCount).ModeIndex = Settings.Mode
-    mProfiles(mCount).ColourIndex = Settings.Colour
+    mProfiles(mCount).ColourIndex = Settings.colour
     mProfiles(mCount).CustomRGB = Settings.CustomRGB
     mProfiles(mCount).StyleIndex = Settings.HighlightStyle
     mProfiles(mCount).Intersect = Settings.IntersectionEnabled
@@ -133,14 +133,14 @@ End Function
 
 Public Function ProfileName(ByVal index As Long) As String
     If index >= 0 And index < mCount Then
-        ProfileName = mProfiles(index).Name
+        ProfileName = mProfiles(index).name
     End If
 End Function
 
 Public Function ActiveProfileIndex() As Long
     Dim i As Long
     For i = 0 To mCount - 1
-        If mProfiles(i).Name = mActiveName Then
+        If mProfiles(i).name = mActiveName Then
             ActiveProfileIndex = i
             Exit Function
         End If

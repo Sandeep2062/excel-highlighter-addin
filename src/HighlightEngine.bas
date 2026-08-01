@@ -61,7 +61,7 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
 
     On Error GoTo ErrHandler
 
-    If Not Settings.Enabled Then
+    If Not Settings.enabled Then
         UpdateStatusBar Nothing
         Exit Sub
     End If
@@ -92,7 +92,7 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
     End If
 
     ' Record the selection in history for back/forward navigation.
-    SelectionHistory.Push wb.Name, ws.Name, target.Row, target.Column
+    SelectionHistory.Push wb.name, ws.name, target.Row, target.Column
 
     EnsureNamesExist wb
 
@@ -117,7 +117,7 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
     Exit Sub
 
 ErrHandler:
-    Logging.LogError "HighlightEngine.HandleSelectionChange", Err.Number, Err.Description, sh.Name
+    Logging.LogError "HighlightEngine.HandleSelectionChange", Err.Number, Err.Description, sh.name
 
 End Sub
 
@@ -133,23 +133,23 @@ End Sub
 Public Sub HandleWorkbookOpen(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.Enabled Then Exit Sub
+    If Not Settings.enabled Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
-    Logging.LogError "HighlightEngine.HandleWorkbookOpen", Err.Number, Err.Description, wb.Name
+    Logging.LogError "HighlightEngine.HandleWorkbookOpen", Err.Number, Err.Description, wb.name
 End Sub
 
 Public Sub HandleWorkbookActivate(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.Enabled Then Exit Sub
+    If Not Settings.enabled Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
-    Logging.LogError "HighlightEngine.HandleWorkbookActivate", Err.Number, Err.Description, wb.Name
+    Logging.LogError "HighlightEngine.HandleWorkbookActivate", Err.Number, Err.Description, wb.name
 End Sub
 
 Public Sub HandleWindowActivate(ByVal wb As Workbook)
@@ -157,12 +157,12 @@ Public Sub HandleWindowActivate(ByVal wb As Workbook)
     ' two event sources stay independently traceable in the log.
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.Enabled Then Exit Sub
+    If Not Settings.enabled Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
 ErrHandler:
-    Logging.LogError "HighlightEngine.HandleWindowActivate", Err.Number, Err.Description, wb.Name
+    Logging.LogError "HighlightEngine.HandleWindowActivate", Err.Number, Err.Description, wb.name
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -202,7 +202,7 @@ Public Sub HandleWorkbookBeforeClose(ByVal wb As Workbook)
 
 ErrHandler:
     ' Don't block the close on a logging or cleanup failure.
-    Logging.LogError "HighlightEngine.HandleWorkbookBeforeClose", Err.Number, Err.Description, wb.Name
+    Logging.LogError "HighlightEngine.HandleWorkbookBeforeClose", Err.Number, Err.Description, wb.name
 
 End Sub
 
@@ -230,7 +230,7 @@ Public Sub ReapplyAllOpenWorkbooks()
 
         If Utilities.WorkbookIsEligible(wb) Then
 
-            If Not Settings.Enabled Then
+            If Not Settings.enabled Then
                 ' Turning the add-in off: strip everything back out.
                 For Each ws In wb.Worksheets
                     RemoveOurConditionalFormatting ws
@@ -282,19 +282,19 @@ Public Sub EnsureNamesExist(ByVal wb As Workbook)
 ' re-enabling highlighting on a previously excluded workbook.
 
     If Not Utilities.NameExists(wb, NAME_ROW_PREFIX) Then
-        wb.Names.Add Name:=NAME_ROW_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_ROW_END_PREFIX) Then
-        wb.Names.Add Name:=NAME_ROW_END_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_END_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_PREFIX) Then
-        wb.Names.Add Name:=NAME_COL_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_END_PREFIX) Then
-        wb.Names.Add Name:=NAME_COL_END_PREFIX, RefersToR1C1:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_END_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
 End Sub
@@ -314,14 +314,14 @@ Private Sub UpdatePositionNames(ByVal wb As Workbook, ByVal target As Range)
         Dim ma As Range
         Set ma = target.MergeArea
         rStart = ma.Row
-        rEnd = ma.Row + ma.Rows.Count - 1
+        rEnd = ma.Row + ma.Rows.count - 1
         cStart = ma.Column
-        cEnd = ma.Column + ma.Columns.Count - 1
+        cEnd = ma.Column + ma.Columns.count - 1
     Else
         rStart = target.Row
-        rEnd = target.Row + target.Rows.Count - 1
+        rEnd = target.Row + target.Rows.count - 1
         cStart = target.Column
-        cEnd = target.Column + target.Columns.Count - 1
+        cEnd = target.Column + target.Columns.count - 1
     End If
 
     wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & rStart
@@ -364,7 +364,7 @@ Public Sub RebuildConditionalFormatting(ByVal ws As Worksheet)
 
     RemoveOurConditionalFormatting ws
 
-    If Not Settings.Enabled Or Settings.Mode = hmNone Then
+    If Not Settings.enabled Or Settings.Mode = hmNone Then
         UntrackSheet ws.Parent, ws
         GoTo RestoreProtection
     End If
@@ -416,7 +416,7 @@ RestoreProtection:
 
 ErrHandler:
     ' Common cause: a protected sheet that doesn't allow formatting changes.
-    Logging.LogError "HighlightEngine.RebuildConditionalFormatting", Err.Number, Err.Description, ws.Name
+    Logging.LogError "HighlightEngine.RebuildConditionalFormatting", Err.Number, Err.Description, ws.name
 
 End Sub
 
@@ -443,7 +443,7 @@ Private Function BoundedTargetRange(ByVal ws As Worksheet) As Range
         If wn.Visible Then
             On Error Resume Next
             If Not wn.RangeSelection Is Nothing Then
-                If wn.ActiveSheet.Name = ws.Name Then
+                If wn.ActiveSheet.name = ws.name Then
                     Set result = Union(result, wn.VisibleRange)
                 End If
             End If
@@ -507,7 +507,7 @@ Public Sub RemoveOurConditionalFormatting(ByVal ws As Worksheet)
     Set allConditions = ws.Cells.FormatConditions
 
     Dim i As Long
-    For i = allConditions.Count To 1 Step -1
+    For i = allConditions.count To 1 Step -1
         Dim fc As FormatCondition
         Set fc = allConditions(i)
 
@@ -524,7 +524,7 @@ Public Sub RemoveOurConditionalFormatting(ByVal ws As Worksheet)
     Exit Sub
 
 ErrHandler:
-    Logging.LogError "HighlightEngine.RemoveOurConditionalFormatting", Err.Number, Err.Description, ws.Name
+    Logging.LogError "HighlightEngine.RemoveOurConditionalFormatting", Err.Number, Err.Description, ws.name
 
 End Sub
 
@@ -543,7 +543,7 @@ Private Sub UpdateStatusBar(ByVal wb As Workbook)
         Exit Sub
     End If
 
-    If Not Settings.Enabled Or Settings.Mode = hmNone Then
+    If Not Settings.enabled Or Settings.Mode = hmNone Then
         Application.StatusBar = False
         Exit Sub
     End If
@@ -561,7 +561,7 @@ Private Sub UpdateStatusBar(ByVal wb As Workbook)
     End Select
 
     Dim colourText As String
-    colourText = ColourName(Settings.Colour)
+    colourText = ColourName(Settings.colour)
 
     Dim extras As String
     If Settings.HighlightStyle = hsBorder Then extras = " [Border]"
@@ -593,7 +593,7 @@ Private Sub TriggerAnimationPulse(ByVal ws As Worksheet)
     mAnimationTimerID = Format$(Now + TimeValue("00:00:00.1"), "hh:mm:ss")
     ' Store the sheet info for the pulse callback.
     Dim pulseData As String
-    pulseData = ws.Parent.Name & "|" & ws.Name
+    pulseData = ws.Parent.name & "|" & ws.name
     Application.OnTime EarliestTime:=CDate(mAnimationTimerID), _
         Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, 0'"
 
@@ -636,7 +636,7 @@ Public Sub PulseStep(ByVal pulseData As String, ByVal iteration As Integer)
             If Not ws Is Nothing Then
                 Dim fc As FormatCondition
                 Dim i As Long
-                For i = 1 To ws.Cells.FormatConditions.Count
+                For i = 1 To ws.Cells.FormatConditions.count
                     Set fc = ws.Cells.FormatConditions(i)
                     If fc.Type = xlExpression Then
                         Dim f As String
@@ -679,7 +679,7 @@ End Sub
 ' Tracker helpers
 '-------------------------------------------------------------------------------
 Private Function TrackerKey(ByVal wb As Workbook, ByVal ws As Worksheet) As String
-    TrackerKey = wb.Name & "|" & ws.CodeName
+    TrackerKey = wb.name & "|" & ws.CodeName
 End Function
 
 Private Function CurrentSignature() As String

@@ -70,3 +70,4 @@ Private Sub Workbook_BeforeClose(Cancel As Boolean)
     On Error Resume Next
     AddinHost.ShutDown
 End Sub
+

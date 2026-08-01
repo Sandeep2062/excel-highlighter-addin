@@ -52,6 +52,8 @@ Quick reference:
 
 **Ribbon tab not appearing?** The installer now clears Excel's `.officeUI` cache automatically. If you still don't see the Highlighter tab after installation: close Excel completely, re-run `install.bat`, then open Excel again.
 
+**Publisher column blank in Excel's Add-ins dialog?** Excel derives that field from the VBA project's digital signature, not from document properties. After installing, run `scripts/sign-xlam.ps1` once to sign the add-in with a self-signed "Sandeep Khadka" certificate - see [docs/installation.md](docs/installation.md) (Option D).
+
 To uninstall anytime, double-click `uninstall.bat` (or run `uninstall.ps1`).
 
 ## Folder structure

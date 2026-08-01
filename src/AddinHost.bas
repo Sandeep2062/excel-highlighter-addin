@@ -33,7 +33,7 @@ Public Sub StartUp()
     ' If the user left the add-in enabled last session, make sure the
     ' currently active workbook picks up highlighting immediately rather
     ' than waiting for the next selection change.
-    If Settings.Enabled Then
+    If Settings.enabled Then
         On Error Resume Next
         HighlightEngine.HandleWorkbookOpen ActiveWorkbook
         On Error GoTo ErrHandler
@@ -94,11 +94,11 @@ End Sub
 '-------------------------------------------------------------------------------
 Public Sub ToggleHotkeyHandler()
     On Error GoTo ErrHandler
-    Settings.Enabled = Not Settings.Enabled
+    Settings.enabled = Not Settings.enabled
     HighlightEngine.ReapplyAllOpenWorkbooks
     ' Invalidate the ribbon so toggle button state matches.
     RibbonCallbacks.InvalidateRibbonExternally
-    If Settings.Enabled Then
+    If Settings.enabled Then
         Logging.LogInfo "AddinHost.ToggleHotkeyHandler", "Toggled ON via hotkey"
     Else
         Logging.LogInfo "AddinHost.ToggleHotkeyHandler", "Toggled OFF via hotkey"

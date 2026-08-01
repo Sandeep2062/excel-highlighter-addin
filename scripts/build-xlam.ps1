@@ -188,8 +188,17 @@ try {
 
     $relsContent = $relsContent -replace '(?i)<Relationship[^>]+ui/extensibility[^>]+/>', ''
 
-    $relType14 = "http://schemas.microsoft.com/office/2007/07/relationships/ui/extensibility"
+    $relType14 = "http://schemas.microsoft.com/office/2007/relationships/ui/extensibility"
     $addedRel = '<Relationship Id="rIdCustomUI14" Type="' + $relType14 + '" Target="customUI/customUI14.xml"/>'
+
+    # Also declare customUI.xml (Excel 2007 schema) if it exists, so it's not
+    # an orphaned part in the OPC package - Excel silently rejects the ribbon
+    # if a part exists in the zip but isn't declared in .rels or [Content_Types].
+    if (Test-Path $customUi07Path) {
+        $relType07 = "http://schemas.microsoft.com/office/2006/relationships/ui/extensibility"
+        $addedRel = $addedRel + '<Relationship Id="rIdCustomUI07" Type="' + $relType07 + '" Target="customUI/customUI.xml"/>'
+    }
+
     $relsContent = $relsContent.Replace('</Relationships>', "$addedRel</Relationships>")
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -203,6 +212,13 @@ try {
     $contentTypes = $contentTypes -replace '(?i)<Override[^>]+customUI[^>]+/>', ''
 
     $addedOverride = '<Override PartName="/customUI/customUI14.xml" ContentType="application/vnd.ms-office.customUI+xml"/>'
+
+    # Also declare customUI.xml (Excel 2007 schema) if it exists, so it's not
+    # an orphaned part - see comment above about .rels.
+    if (Test-Path $customUi07Path) {
+        $addedOverride = $addedOverride + '<Override PartName="/customUI/customUI.xml" ContentType="application/vnd.ms-office.customUI+xml"/>'
+    }
+
     $contentTypes = $contentTypes.Replace('</Types>', "$addedOverride</Types>")
 
     [System.IO.File]::WriteAllText($contentTypesPath, $contentTypes, $utf8NoBom)

@@ -113,7 +113,7 @@ End Sub
 Public Function WorkbookIsExcluded(ByVal wb As Workbook) As Boolean
     On Error Resume Next
     If NameExists(wb, NAME_EXCLUDED) Then
-        WorkbookIsExcluded = (CLng(wb.Names(NAME_EXCLUDED).RefersToRange.Value) = 1)
+        WorkbookIsExcluded = (CLng(wb.Names(NAME_EXCLUDED).RefersToRange.value) = 1)
     End If
     On Error GoTo 0
 End Function
@@ -131,7 +131,7 @@ Public Sub SetWorkbookExclusion(ByVal wb As Workbook, ByVal excluded As Boolean)
     On Error GoTo ErrHandler
     If excluded Then
         If Not NameExists(wb, NAME_EXCLUDED) Then
-            wb.Names.Add Name:=NAME_EXCLUDED, RefersToR1C1:="=1", Visible:=False
+            wb.Names.Add name:=NAME_EXCLUDED, RefersToR1C1:="=1", Visible:=False
         Else
             wb.Names(NAME_EXCLUDED).RefersToR1C1 = "=1"
         End If
@@ -140,7 +140,7 @@ Public Sub SetWorkbookExclusion(ByVal wb As Workbook, ByVal excluded As Boolean)
     End If
     Exit Sub
 ErrHandler:
-    Logging.LogError "Utilities.SetWorkbookExclusion", Err.Number, Err.Description, wb.Name
+    Logging.LogError "Utilities.SetWorkbookExclusion", Err.Number, Err.Description, wb.name
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -157,11 +157,11 @@ Public Function SheetIsExcluded(ByVal ws As Worksheet) As Boolean
         ' Worksheet-scoped names are accessed via ws.Parent.Names but
         ' the name itself is scoped to the sheet. We check if the name
         ' exists and its value is 1.
-        Dim nm As Name
+        Dim nm As name
         Set nm = ws.Parent.Names(NAME_SHEET_EXCLUDED)
         If Not nm Is Nothing Then
             If InStr(1, nm.RefersTo, ws.CodeName, vbTextCompare) > 0 Then
-                SheetIsExcluded = (CLng(ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToRange.Value) = 1)
+                SheetIsExcluded = (CLng(ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToRange.value) = 1)
             End If
         End If
     End If
@@ -182,9 +182,9 @@ Public Sub SetSheetExclusion(ByVal ws As Worksheet, ByVal excluded As Boolean)
     If excluded Then
         ' Worksheet-scoped name: the name includes the sheet name as scope.
         Dim scopedName As String
-        scopedName = "'" & ws.Name & "'!" & NAME_SHEET_EXCLUDED
+        scopedName = "'" & ws.name & "'!" & NAME_SHEET_EXCLUDED
         If Not NameExists(ws.Parent, NAME_SHEET_EXCLUDED) Then
-            ws.Parent.Names.Add Name:=scopedName, RefersToR1C1:="=1", Visible:=False
+            ws.Parent.Names.Add name:=scopedName, RefersToR1C1:="=1", Visible:=False
         Else
             ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToR1C1 = "=1"
         End If
@@ -193,7 +193,7 @@ Public Sub SetSheetExclusion(ByVal ws As Worksheet, ByVal excluded As Boolean)
     End If
     Exit Sub
 ErrHandler:
-    Logging.LogError "Utilities.SetSheetExclusion", Err.Number, Err.Description, ws.Name
+    Logging.LogError "Utilities.SetSheetExclusion", Err.Number, Err.Description, ws.name
 End Sub
 
 '-------------------------------------------------------------------------------
@@ -213,7 +213,7 @@ End Function
 '               customRGB - value to return when colour = hcCustom
 ' Returns     : Long (RGB colour value)
 '-------------------------------------------------------------------------------
-Public Function ColourToRGB(ByVal colour As HighlightColour, ByVal customRGB As Long) As Long
+Public Function ColourToRGB(ByVal colour As HighlightColour, ByVal CustomRGB As Long) As Long
 
     Select Case colour
         Case hcYellow: ColourToRGB = RGB_YELLOW
@@ -223,7 +223,7 @@ Public Function ColourToRGB(ByVal colour As HighlightColour, ByVal customRGB As 
         Case hcBlue:   ColourToRGB = RGB_BLUE
         Case hcPink:   ColourToRGB = RGB_PINK
         Case hcGrey:   ColourToRGB = RGB_GREY
-        Case hcCustom: ColourToRGB = customRGB
+        Case hcCustom: ColourToRGB = CustomRGB
         Case Else:     ColourToRGB = RGB_YELLOW
     End Select
 

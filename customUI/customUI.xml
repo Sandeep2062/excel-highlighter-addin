@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui"
-          onLoad="RibbonCallbacks.onLoad">
+          onLoad="onLoad">
   <ribbon>
     <tabs>
       <tab id="tabHighlighter" label="Highlighter" insertAfterMso="TabHome">
@@ -11,11 +11,11 @@
           <toggleButton id="btnToggleHighlight"
                         size="large"
                         imageMso="ConditionalFormattingMenu"
-                        getLabel="RibbonCallbacks.GetToggle_Label"
+                        getLabel="GetToggle_Label"
                         screentip="Enable or disable the crosshair highlighter"
                         supertip="Turns highlighting on for every open workbook, or off entirely. Your cell formatting is never modified - this only toggles a temporary overlay."
-                        getPressed="RibbonCallbacks.GetToggle_Pressed"
-                        onAction="RibbonCallbacks.OnToggle_Action"/>
+                        getPressed="GetToggle_Pressed"
+                        onAction="OnToggle_Action"/>
 
           <toggleButton id="btnModeRow"
                         size="large"
@@ -23,9 +23,9 @@
                         imageMso="TableSelectRow"
                         screentip="Highlight active row"
                         supertip="Highlights the entire row containing the active cell."
-                        getPressed="RibbonCallbacks.GetMode_Pressed"
-                        getEnabled="RibbonCallbacks.GetMode_Enabled"
-                        onAction="RibbonCallbacks.OnMode_Action"/>
+                        getPressed="GetMode_Pressed"
+                        getEnabled="GetMode_Enabled"
+                        onAction="OnMode_Action"/>
 
           <toggleButton id="btnModeColumn"
                         size="large"
@@ -33,9 +33,9 @@
                         imageMso="TableSelectColumn"
                         screentip="Highlight active column"
                         supertip="Highlights the entire column containing the active cell."
-                        getPressed="RibbonCallbacks.GetMode_Pressed"
-                        getEnabled="RibbonCallbacks.GetMode_Enabled"
-                        onAction="RibbonCallbacks.OnMode_Action"/>
+                        getPressed="GetMode_Pressed"
+                        getEnabled="GetMode_Enabled"
+                        onAction="OnMode_Action"/>
 
           <toggleButton id="btnModeCrosshair"
                         size="large"
@@ -43,9 +43,9 @@
                         imageMso="ViewGridlines"
                         screentip="Highlight row and column"
                         supertip="Highlights both the row and the column of the active cell at the same time."
-                        getPressed="RibbonCallbacks.GetMode_Pressed"
-                        getEnabled="RibbonCallbacks.GetMode_Enabled"
-                        onAction="RibbonCallbacks.OnMode_Action"/>
+                        getPressed="GetMode_Pressed"
+                        getEnabled="GetMode_Enabled"
+                        onAction="OnMode_Action"/>
 
           <toggleButton id="btnModeCell"
                         size="large"
@@ -53,9 +53,9 @@
                         imageMso="FillColor"
                         screentip="Highlight active cell only"
                         supertip="Highlights only the active cell or merged range without row or column crosshairs."
-                        getPressed="RibbonCallbacks.GetMode_Pressed"
-                        getEnabled="RibbonCallbacks.GetMode_Enabled"
-                        onAction="RibbonCallbacks.OnMode_Action"/>
+                        getPressed="GetMode_Pressed"
+                        getEnabled="GetMode_Enabled"
+                        onAction="OnMode_Action"/>
 
         </group>
 
@@ -69,25 +69,25 @@
                    rows="3"
                    itemWidth="32"
                    itemHeight="32"
-                   getEnabled="RibbonCallbacks.GetGallery_Enabled"
-                   getSelectedItemID="RibbonCallbacks.GetGallery_SelectedItemID"
-                   getItemCount="RibbonCallbacks.GetGallery_ItemCount"
-                   getItemID="RibbonCallbacks.GetGallery_ItemID"
-                   getItemLabel="RibbonCallbacks.GetGallery_ItemLabel"
-                   getItemImage="RibbonCallbacks.GetGallery_ItemImage"
-                   getItemScreentip="RibbonCallbacks.GetGallery_ItemScreentip"
-                   onAction="RibbonCallbacks.OnGallery_Action"
+                   getEnabled="GetGallery_Enabled"
+                   getSelectedItemID="GetGallery_SelectedItemID"
+                   getItemCount="GetGallery_ItemCount"
+                   getItemID="GetGallery_ItemID"
+                   getItemLabel="GetGallery_ItemLabel"
+                   getItemImage="GetGallery_ItemImage"
+                   getItemScreentip="GetGallery_ItemScreentip"
+                   onAction="OnGallery_Action"
                    screentip="Highlight colour"
                    supertip="Choose the colour used for the highlight overlay."/>
 
           <button id="btnCustomColour"
                   label="Custom Colour..."
                   size="large"
-                  getImage="RibbonCallbacks.GetSwatchImage"
-                  getEnabled="RibbonCallbacks.GetGallery_Enabled"
+                  getImage="GetSwatchImage"
+                  getEnabled="GetGallery_Enabled"
                   screentip="Pick a custom colour"
                   supertip="Opens the standard Excel colour picker so you can choose any RGB colour for the highlight."
-                  onAction="RibbonCallbacks.OnCustomColour_Action"/>
+                  onAction="OnCustomColour_Action"/>
 
           <toggleButton id="btnPerModeColours"
                         size="large"
@@ -95,9 +95,9 @@
                         imageMso="DiagramColorToggle"
                         screentip="Use different colours for row and column"
                         supertip="When enabled in Crosshair mode, the row and column highlights can use different colours."
-                        getPressed="RibbonCallbacks.GetPerModeColours_Pressed"
-                        getEnabled="RibbonCallbacks.GetPerModeColours_Enabled"
-                        onAction="RibbonCallbacks.OnPerModeColours_Action"/>
+                        getPressed="GetPerModeColours_Pressed"
+                        getEnabled="GetPerModeColours_Enabled"
+                        onAction="OnPerModeColours_Action"/>
 
           <gallery id="galRowColour"
                    label="Row Colour"
@@ -106,14 +106,14 @@
                    rows="2"
                    itemWidth="32"
                    itemHeight="32"
-                   getEnabled="RibbonCallbacks.GetRowColourGallery_Enabled"
-                   getSelectedItemID="RibbonCallbacks.GetRowColour_SelectedItemID"
-                   getItemCount="RibbonCallbacks.GetGallery_ItemCount"
-                   getItemID="RibbonCallbacks.GetGallery_ItemID"
-                   getItemLabel="RibbonCallbacks.GetGallery_ItemLabel"
-                   getItemImage="RibbonCallbacks.GetGallery_ItemImage"
-                   getItemScreentip="RibbonCallbacks.GetGallery_ItemScreentip"
-                   onAction="RibbonCallbacks.OnRowColour_Action"
+                   getEnabled="GetRowColourGallery_Enabled"
+                   getSelectedItemID="GetRowColour_SelectedItemID"
+                   getItemCount="GetGallery_ItemCount"
+                   getItemID="GetGallery_ItemID"
+                   getItemLabel="GetGallery_ItemLabel"
+                   getItemImage="GetGallery_ItemImage"
+                   getItemScreentip="GetGallery_ItemScreentip"
+                   onAction="OnRowColour_Action"
                    screentip="Row highlight colour"
                    supertip="Choose the colour used for row highlighting when per-mode colours are enabled."/>
 
@@ -124,14 +124,14 @@
                    rows="2"
                    itemWidth="32"
                    itemHeight="32"
-                   getEnabled="RibbonCallbacks.GetRowColourGallery_Enabled"
-                   getSelectedItemID="RibbonCallbacks.GetColColour_SelectedItemID"
-                   getItemCount="RibbonCallbacks.GetGallery_ItemCount"
-                   getItemID="RibbonCallbacks.GetGallery_ItemID"
-                   getItemLabel="RibbonCallbacks.GetGallery_ItemLabel"
-                   getItemImage="RibbonCallbacks.GetGallery_ItemImage"
-                   getItemScreentip="RibbonCallbacks.GetGallery_ItemScreentip"
-                   onAction="RibbonCallbacks.OnColColour_Action"
+                   getEnabled="GetRowColourGallery_Enabled"
+                   getSelectedItemID="GetColColour_SelectedItemID"
+                   getItemCount="GetGallery_ItemCount"
+                   getItemID="GetGallery_ItemID"
+                   getItemLabel="GetGallery_ItemLabel"
+                   getItemImage="GetGallery_ItemImage"
+                   getItemScreentip="GetGallery_ItemScreentip"
+                   onAction="OnColColour_Action"
                    screentip="Column highlight colour"
                    supertip="Choose the colour used for column highlighting when per-mode colours are enabled."/>
 
@@ -146,10 +146,10 @@
                         imageMso="DeleteTable"
                         screentip="Exclude or include the current workbook"
                         supertip="When excluded, the current workbook is skipped by the highlighter entirely. The exclusion travels with the file itself via a hidden defined name."
-                        getPressed="RibbonCallbacks.GetExclude_Pressed"
-                        getEnabled="RibbonCallbacks.GetExclude_Enabled"
-                        getLabel="RibbonCallbacks.GetExclude_Label"
-                        onAction="RibbonCallbacks.OnExclude_Action"/>
+                        getPressed="GetExclude_Pressed"
+                        getEnabled="GetExclude_Enabled"
+                        getLabel="GetExclude_Label"
+                        onAction="OnExclude_Action"/>
 
           <toggleButton id="btnExcludeSheet"
                         size="large"
@@ -157,10 +157,10 @@
                         imageMso="DeleteRows"
                         screentip="Exclude or include the current worksheet"
                         supertip="When excluded, the current worksheet is skipped by the highlighter while other sheets in the workbook continue to work normally. The exclusion travels with the file via a sheet-scoped defined name."
-                        getPressed="RibbonCallbacks.GetExcludeSheet_Pressed"
-                        getEnabled="RibbonCallbacks.GetExcludeSheet_Enabled"
-                        getLabel="RibbonCallbacks.GetExcludeSheet_Label"
-                        onAction="RibbonCallbacks.OnExcludeSheet_Action"/>
+                        getPressed="GetExcludeSheet_Pressed"
+                        getEnabled="GetExcludeSheet_Enabled"
+                        getLabel="GetExcludeSheet_Label"
+                        onAction="OnExcludeSheet_Action"/>
 
           <toggleButton id="btnAllowProtected"
                         size="large"
@@ -168,9 +168,9 @@
                         imageMso="ProtectSheet"
                         screentip="Allow highlighting on protected sheets"
                         supertip="When enabled, temporarily unprotects sheets to apply conditional formatting. Requires explicit consent - protection settings are restored afterwards."
-                        getPressed="RibbonCallbacks.GetAllowProtected_Pressed"
-                        getEnabled="RibbonCallbacks.GetAllowProtected_Enabled"
-                        onAction="RibbonCallbacks.OnAllowProtected_Action"/>
+                        getPressed="GetAllowProtected_Pressed"
+                        getEnabled="GetAllowProtected_Enabled"
+                        onAction="OnAllowProtected_Action"/>
 
           <toggleButton id="btnDarkMode"
                         size="large"
@@ -178,9 +178,9 @@
                         imageMso="FillEffects"
                         screentip="Dark mode tinting"
                         supertip="Adjusts highlight colors to produce pleasant contrast on dark Office themes."
-                        getPressed="RibbonCallbacks.GetDarkMode_Pressed"
-                        getEnabled="RibbonCallbacks.GetDarkMode_Enabled"
-                        onAction="RibbonCallbacks.OnDarkMode_Action"/>
+                        getPressed="GetDarkMode_Pressed"
+                        getEnabled="GetDarkMode_Enabled"
+                        onAction="OnDarkMode_Action"/>
 
           <button id="btnResetSettings"
                   label="Reset Settings"
@@ -188,7 +188,7 @@
                   imageMso="RefreshAll"
                   screentip="Reset to defaults"
                   supertip="Restores the highlighter to its factory defaults: off, crosshair mode, yellow."
-                  onAction="RibbonCallbacks.OnReset_Action"/>
+                  onAction="OnReset_Action"/>
 
         </group>
 
@@ -201,9 +201,9 @@
                         imageMso="CellShading"
                         screentip="Highlight with cell fill"
                         supertip="Uses cell interior colour for the highlight."
-                        getPressed="RibbonCallbacks.GetStyle_Pressed"
-                        getEnabled="RibbonCallbacks.GetStyle_Enabled"
-                        onAction="RibbonCallbacks.OnStyle_Action"/>
+                        getPressed="GetStyle_Pressed"
+                        getEnabled="GetStyle_Enabled"
+                        onAction="OnStyle_Action"/>
 
           <toggleButton id="btnStyleBorder"
                         size="large"
@@ -211,9 +211,9 @@
                         imageMso="BorderOutsideThick"
                         screentip="Highlight with cell border"
                         supertip="Uses a thick cell border for the highlight instead of fill."
-                        getPressed="RibbonCallbacks.GetStyle_Pressed"
-                        getEnabled="RibbonCallbacks.GetStyle_Enabled"
-                        onAction="RibbonCallbacks.OnStyle_Action"/>
+                        getPressed="GetStyle_Pressed"
+                        getEnabled="GetStyle_Enabled"
+                        onAction="OnStyle_Action"/>
 
           <toggleButton id="btnIntersection"
                         size="large"
@@ -221,9 +221,9 @@
                         imageMso="CellShading"
                         screentip="Highlight the intersection cell"
                         supertip="When enabled, the cell at the row/column intersection gets a stronger highlight for emphasis."
-                        getPressed="RibbonCallbacks.GetIntersection_Pressed"
-                        getEnabled="RibbonCallbacks.GetIntersection_Enabled"
-                        onAction="RibbonCallbacks.OnIntersection_Action"/>
+                        getPressed="GetIntersection_Pressed"
+                        getEnabled="GetIntersection_Enabled"
+                        onAction="OnIntersection_Action"/>
 
           <toggleButton id="btnAnimated"
                         size="large"
@@ -231,9 +231,9 @@
                         imageMso="FlashFill"
                         screentip="Animated highlight pulse"
                         supertip="When enabled, the highlight briefly pulses when the selection changes. Opt-in because it uses a timer."
-                        getPressed="RibbonCallbacks.GetAnimated_Pressed"
-                        getEnabled="RibbonCallbacks.GetAnimated_Enabled"
-                        onAction="RibbonCallbacks.OnAnimated_Action"/>
+                        getPressed="GetAnimated_Pressed"
+                        getEnabled="GetAnimated_Enabled"
+                        onAction="OnAnimated_Action"/>
 
         </group>
 
@@ -246,8 +246,8 @@
                   imageMso="Undo"
                   screentip="Navigate to previous cell (Ctrl+Shift+Z)"
                   supertip="Goes back to the previously selected cell."
-                  getEnabled="RibbonCallbacks.GetHistoryBack_Enabled"
-                  onAction="RibbonCallbacks.OnHistoryBack_Action"/>
+                  getEnabled="GetHistoryBack_Enabled"
+                  onAction="OnHistoryBack_Action"/>
 
           <button id="btnHistoryForward"
                   size="large"
@@ -255,21 +255,21 @@
                   imageMso="Redo"
                   screentip="Navigate to next cell (Ctrl+Shift+X)"
                   supertip="Goes forward to the next cell in history."
-                  getEnabled="RibbonCallbacks.GetHistoryForward_Enabled"
-                  onAction="RibbonCallbacks.OnHistoryForward_Action"/>
+                  getEnabled="GetHistoryForward_Enabled"
+                  onAction="OnHistoryForward_Action"/>
 
         </group>
 
         <!-- ================= Profiles group ================= -->
         <group id="grpProfiles" label="Profiles">
 
-          <menu id="ddlProfiles"
+          <dynamicMenu id="ddlProfiles"
                label="Profiles"
                imageMso="CustomViews"
                screentip="Highlight profiles"
                supertip="Switch between named sets of mode, colour, style, and intersection settings."
-               getEnabled="RibbonCallbacks.GetProfile_Enabled"
-               getContent="RibbonCallbacks.GetProfilesContent"/>
+               getEnabled="GetProfile_Enabled"
+               getContent="GetProfilesContent"/>
 
           <button id="btnSaveProfile"
                   size="large"
@@ -277,7 +277,7 @@
                   imageMso="FileSave"
                   screentip="Save settings as a new profile"
                   supertip="Saves the current mode, colour, style, and intersection settings as a named profile."
-                  onAction="RibbonCallbacks.OnSaveProfile_Action"/>
+                  onAction="OnSaveProfile_Action"/>
 
         </group>
 
@@ -289,7 +289,7 @@
                   size="large"
                   imageMso="Info"
                   screentip="About Excel Highlighter"
-                  onAction="RibbonCallbacks.OnAbout_Action"/>
+                  onAction="OnAbout_Action"/>
 
         </group>
 

@@ -49,16 +49,37 @@ if ($excelProcesses) {
     Start-Sleep -Seconds 1
 }
 
-# Copy files
+# Clear Excel's ribbon cache so the Highlighter tab reliably appears on the
+# next launch. A stale Excel.officeUI is the most common cause of a missing
+# custom ribbon tab (it can be written to either %APPDATA% or %LOCALAPPDATA%).
+$officeUiPaths = @(
+    (Join-Path $env:APPDATA "Microsoft\Office\Excel.officeUI"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\Office\Excel.officeUI")
+)
+foreach ($uiPath in $officeUiPaths) {
+    if (Test-Path $uiPath) {
+        Remove-Item $uiPath -Force -ErrorAction SilentlyContinue
+        Write-Host "  Cleared ribbon cache: $uiPath" -ForegroundColor Green
+    }
+}
+
+# Copy files to target folder and root AddIns folder
+$rootAddinDir = Join-Path $env:APPDATA "Microsoft\AddIns"
+$rootXlam = Join-Path $rootAddinDir "excel-highlighter.xlam"
+$rootImages = Join-Path $rootAddinDir "images"
+
 Copy-Item $xlamSource $targetXlam -Force
+Copy-Item $xlamSource $rootXlam -Force
 Unblock-File -Path $targetXlam -ErrorAction SilentlyContinue
+Unblock-File -Path $rootXlam -ErrorAction SilentlyContinue
 Write-Host "  Copied and unblocked add-in at: $targetXlam" -ForegroundColor Green
+Write-Host "  Copied and unblocked add-in at: $rootXlam" -ForegroundColor Green
 
 if (Test-Path $imagesSource) {
-    if (-not (Test-Path $targetImages)) {
-        New-Item -ItemType Directory -Path $targetImages -Force | Out-Null
-    }
-    Copy-Item (Join-Path $imagesSource "*") $targetImages -Force
+    if (-not (Test-Path $targetImages)) { New-Item -ItemType Directory -Path $targetImages -Force | Out-Null }
+    if (-not (Test-Path $rootImages)) { New-Item -ItemType Directory -Path $rootImages -Force | Out-Null }
+    Get-ChildItem -Path $imagesSource -File | Copy-Item -Destination $targetImages -Force
+    Get-ChildItem -Path $imagesSource -File | Copy-Item -Destination $rootImages -Force
     Write-Host "  Copied UI icons to: $targetImages" -ForegroundColor Green
 }
 
@@ -92,9 +113,11 @@ foreach ($ver in $officeVersions) {
             }
         }
 
+        # Excel strictly requires the /R switch in the OPEN registry value
+        # to load the add-in on startup. Without /R, Excel ignores the entry.
         $regValue = '/R "' + $targetXlam + '"'
         Set-ItemProperty -Path $regPath -Name $targetKeyName -Value $regValue -Force | Out-Null
-        Write-Host "  Activated in Excel $ver Registry ($targetKeyName -> $targetXlam)" -ForegroundColor Green
+        Write-Host "  Activated in Excel $ver Registry ($targetKeyName -> $regValue)" -ForegroundColor Green
         $activatedCount++
     }
 }
