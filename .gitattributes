@@ -1,0 +1,28 @@
+# Normalize line endings for text files
+* text=auto
+
+# PowerShell scripts
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+
+# Batch files (must be CRLF for cmd.exe)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Office binary add-in - never treat as text
+*.xlam binary
+
+# Source files
+*.bas text
+*.cls text
+*.cs text
+*.xml text
+*.md text
+*.json text
+*.html text
+*.css text
+*.js text
+
+# Images
+*.png binary
+*.ico binary
