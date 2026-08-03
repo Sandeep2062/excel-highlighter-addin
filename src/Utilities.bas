@@ -95,56 +95,50 @@ End Function
 ' Parameters  : wb - workbook that owns the name
 '               nm - the name text (without workbook qualification)
 '-------------------------------------------------------------------------------
-Public Function GetNameObject(ByVal wb As Workbook, ByVal nm As String) As name
-    Set GetNameObject = Nothing
-    If wb Is Nothing Then Exit Function
-    
-    Dim n As name
+Public Sub SafeDeleteName(ByVal wb As Workbook, ByVal nm As String)
     On Error Resume Next
-    For Each n In wb.Names
-        If StrComp(n.name, nm, vbTextCompare) = 0 Then
-            Set GetNameObject = n
-            Exit Function
-        End If
-        If Right$(n.name, Len(nm) + 1) = "!" & nm Then
-            Set GetNameObject = n
-            Exit Function
-        End If
-    Next n
+    wb.Names(nm).Delete
+    On Error GoTo 0
+End Sub
+
+'-------------------------------------------------------------------------------
+' WorkbookIsExcluded
+' Description : Checks whether a workbook has the exclusion marker defined
+'               name set to 1. The exclusion travels with the file itself
+'               rather than living in the registry, so it survives being
+'               sent to someone else.
+'               Also honours the legacy pre-2.1.4 _XLCH_Excluded name so an
+'               exclusion set by an older build keeps working after upgrade.
+' Parameters  : wb - the workbook to check
+' Returns     : Boolean - True if the workbook is excluded from highlighting
+'-------------------------------------------------------------------------------
+Public Function WorkbookIsExcluded(ByVal wb As Workbook) As Boolean
+    On Error Resume Next
+    If NameExists(wb, NAME_EXCLUDED) Then
+        WorkbookIsExcluded = (CLng(wb.Names(NAME_EXCLUDED).RefersToRange.value) = 1)
+    ElseIf NameExists(wb, NAME_LEGACY_EXCLUDED) Then
+        WorkbookIsExcluded = (CLng(wb.Names(NAME_LEGACY_EXCLUDED).RefersToRange.value) = 1)
+    End If
     On Error GoTo 0
 End Function
 
-Public Sub SafeDeleteName(ByVal wb As Workbook, ByVal nm As String)
-    If wb Is Nothing Then Exit Sub
-    Dim n As name
-    Set n = GetNameObject(wb, nm)
-    If Not n Is Nothing Then
-        On Error Resume Next
-        n.Delete
-        On Error GoTo 0
-    End If
-End Sub
-
-Public Function WorkbookIsExcluded(ByVal wb As Workbook) As Boolean
-    WorkbookIsExcluded = False
-    Dim n As name
-    Set n = GetNameObject(wb, NAME_EXCLUDED)
-    If Not n Is Nothing Then
-        On Error Resume Next
-        WorkbookIsExcluded = (InStr(1, n.RefersTo, "1") > 0)
-        On Error GoTo 0
-    End If
-End Function
-
+'-------------------------------------------------------------------------------
+' SetWorkbookExclusion
+' Description : Adds or removes the exclusion marker on a workbook. When
+'               excluded is True, a hidden defined name XLCH_Excluded is
+'               created (or updated) with value 1. When False, the name is
+'               removed entirely. (Clean prefix, no leading underscore -
+'               modern Excel 2024 rejects _XLCH_* names with error 1004.)
+' Parameters  : wb       - the workbook to modify
+'               excluded - True to exclude, False to allow highlighting
+'-------------------------------------------------------------------------------
 Public Sub SetWorkbookExclusion(ByVal wb As Workbook, ByVal excluded As Boolean)
     On Error GoTo ErrHandler
     If excluded Then
-        Dim n As name
-        Set n = GetNameObject(wb, NAME_EXCLUDED)
-        If n Is Nothing Then
-            wb.Names.Add name:=NAME_EXCLUDED, RefersTo:="=1", Visible:=False
+        If Not NameExists(wb, NAME_EXCLUDED) Then
+            wb.Names.Add name:=NAME_EXCLUDED, RefersToR1C1:="=1", Visible:=False
         Else
-            n.RefersTo = "=1"
+            wb.Names(NAME_EXCLUDED).RefersToR1C1 = "=1"
         End If
     Else
         SafeDeleteName wb, NAME_EXCLUDED
@@ -154,30 +148,59 @@ ErrHandler:
     Logging.LogError "Utilities.SetWorkbookExclusion", Err.Number, Err.Description, wb.name
 End Sub
 
+'-------------------------------------------------------------------------------
+' SheetIsExcluded
+' Description : Checks whether a specific worksheet has the sheet-level
+'               exclusion marker defined name set to 1. This is a
+'               worksheet-scoped name, so it only affects that one sheet.
+' Parameters  : ws - the worksheet to check
+' Returns     : Boolean - True if the sheet is excluded from highlighting
+'-------------------------------------------------------------------------------
 Public Function SheetIsExcluded(ByVal ws As Worksheet) As Boolean
-    SheetIsExcluded = False
-    If ws Is Nothing Then Exit Function
-    If ws.Parent Is Nothing Then Exit Function
-    Dim n As name
-    Set n = GetNameObject(ws.Parent, NAME_SHEET_EXCLUDED)
-    If Not n Is Nothing Then
-        On Error Resume Next
-        SheetIsExcluded = (InStr(1, n.RefersTo, "1") > 0)
-        On Error GoTo 0
+    On Error Resume Next
+    If NameExists(ws.Parent, NAME_SHEET_EXCLUDED) Then
+        ' Worksheet-scoped names are accessed via ws.Parent.Names but
+        ' the name itself is scoped to the sheet. We check if the name
+        ' exists and its value is 1.
+        Dim nm As name
+        Set nm = ws.Parent.Names(NAME_SHEET_EXCLUDED)
+        If Not nm Is Nothing Then
+            If InStr(1, nm.RefersTo, ws.CodeName, vbTextCompare) > 0 Then
+                SheetIsExcluded = (CLng(ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToRange.value) = 1)
+            End If
+        End If
+    ElseIf NameExists(ws.Parent, NAME_LEGACY_SHEET_EXCLUDED) Then
+        ' Legacy pre-2.1.4 worksheet-scoped name - honour it so an exclusion
+        ' set by an older build keeps working after upgrade.
+        Set nm = ws.Parent.Names(NAME_LEGACY_SHEET_EXCLUDED)
+        If Not nm Is Nothing Then
+            If InStr(1, nm.RefersTo, ws.CodeName, vbTextCompare) > 0 Then
+                SheetIsExcluded = (CLng(ws.Parent.Names(NAME_LEGACY_SHEET_EXCLUDED).RefersToRange.value) = 1)
+            End If
+        End If
     End If
+    On Error GoTo 0
 End Function
 
+'-------------------------------------------------------------------------------
+' SetSheetExclusion
+' Description : Adds or removes the sheet-level exclusion marker. When
+'               excluded is True, a worksheet-scoped defined name
+'               XLCH_SheetExcluded is created with value 1. When False,
+'               the name is removed.
+' Parameters  : ws       - the worksheet to modify
+'               excluded - True to exclude, False to allow highlighting
+'-------------------------------------------------------------------------------
 Public Sub SetSheetExclusion(ByVal ws As Worksheet, ByVal excluded As Boolean)
     On Error GoTo ErrHandler
     If excluded Then
+        ' Worksheet-scoped name: the name includes the sheet name as scope.
         Dim scopedName As String
         scopedName = "'" & ws.name & "'!" & NAME_SHEET_EXCLUDED
-        Dim n As name
-        Set n = GetNameObject(ws.Parent, NAME_SHEET_EXCLUDED)
-        If n Is Nothing Then
-            ws.Parent.Names.Add name:=scopedName, RefersTo:="=1", Visible:=False
+        If Not NameExists(ws.Parent, NAME_SHEET_EXCLUDED) Then
+            ws.Parent.Names.Add name:=scopedName, RefersToR1C1:="=1", Visible:=False
         Else
-            n.RefersTo = "=1"
+            ws.Parent.Names(NAME_SHEET_EXCLUDED).RefersToR1C1 = "=1"
         End If
     Else
         SafeDeleteName ws.Parent, NAME_SHEET_EXCLUDED
@@ -187,9 +210,35 @@ ErrHandler:
     Logging.LogError "Utilities.SetSheetExclusion", Err.Number, Err.Description, ws.name
 End Sub
 
+'-------------------------------------------------------------------------------
+' NameExists
+'-------------------------------------------------------------------------------
 Public Function NameExists(ByVal wb As Workbook, ByVal nm As String) As Boolean
-    NameExists = Not GetNameObject(wb, nm) Is Nothing
+    On Error Resume Next
+    NameExists = Not wb.Names(nm) Is Nothing
+    On Error GoTo 0
 End Function
+
+'-------------------------------------------------------------------------------
+' DeleteLegacyNames
+' Description : Removes the pre-2.1.4 leading-underscore defined names
+'               (_XLCH_*) from a workbook. Those names are rejected by modern
+'               Excel parsers, and workbooks touched by older builds may still
+'               carry them. Called from the cleanup paths (workbook close,
+'               add-in off, exclusion toggle off) so upgrading never orphans
+'               them and the "never leave a workbook modified" promise holds.
+' Parameters  : wb - the workbook to sweep
+'-------------------------------------------------------------------------------
+Public Sub DeleteLegacyNames(ByVal wb As Workbook)
+    On Error Resume Next
+    SafeDeleteName wb, NAME_LEGACY_ROW_PREFIX
+    SafeDeleteName wb, NAME_LEGACY_ROW_END_PREFIX
+    SafeDeleteName wb, NAME_LEGACY_COL_PREFIX
+    SafeDeleteName wb, NAME_LEGACY_COL_END_PREFIX
+    SafeDeleteName wb, NAME_LEGACY_EXCLUDED
+    SafeDeleteName wb, NAME_LEGACY_SHEET_EXCLUDED
+    On Error GoTo 0
+End Sub
 
 '-------------------------------------------------------------------------------
 ' ColourToRGB
@@ -213,6 +262,28 @@ Public Function ColourToRGB(ByVal colour As HighlightColour, ByVal CustomRGB As 
         Case Else:     ColourToRGB = RGB_YELLOW
     End Select
 
+End Function
+
+'-------------------------------------------------------------------------------
+' DarkenColour
+' Description : Returns a BGR colour scaled toward black by the given
+'               percentage (percent=55 means 55% of the original brightness).
+'               Used for the crosshair intersection accent so the cursor cell
+'               is always visibly stronger than the row/column band, whatever
+'               highlight colour is in use.
+' Parameters  : bgrColour - Excel BGR Long (0x00BBGGRR)
+'               percent   - brightness percentage to keep (1-100)
+' Returns     : Long - darkened BGR colour
+'-------------------------------------------------------------------------------
+Public Function DarkenColour(ByVal bgrColour As Long, ByVal percent As Long) As Long
+    Dim r As Long, g As Long, b As Long
+    r = bgrColour Mod 256
+    g = (bgrColour \ 256) Mod 256
+    b = (bgrColour \ 65536) Mod 256
+    r = (r * percent) \ 100
+    g = (g * percent) \ 100
+    b = (b * percent) \ 100
+    DarkenColour = RGB(r, g, b)
 End Function
 
 '-------------------------------------------------------------------------------

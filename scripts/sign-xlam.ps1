@@ -16,16 +16,17 @@
       2. Opens the add-in in Excel and brings up the Visual Basic
          Editor, where you sign the project once:
              Tools > Digital Signature... > Choose... > "Sandeep Khadka" > OK
-      3. Saves the add-in, then VERIFIES the signature cryptographically
-         by inspecting the saved file: the digest embedded inside
-         xl/vbaProjectSignature.bin must match the current
-         xl/vbaProject.bin bytes. Presence of the signature parts alone
-         is NOT proof - Excel silently invalidates the signature whenever
-         it re-saves the project after you sign it (e.g. via the
-         "Remove personal information from file properties on save"
-         privacy option), which leaves the parts behind but breaks the
-         signature. That is the usual reason the Publisher column stays
-         blank despite "signing".
+      3. Saves the add-in, then VERIFIES the signature with Excel's own
+         verdict: the file is opened in a fresh hidden instance and
+         `VBProject.Signed` is read on the fully-readable project - the
+         only trustworthy check (the signature digest verifier is
+         unreliable for VBA Agile/V3 signatures and is kept only as a
+         fallback). Presence of the signature parts alone is NOT proof -
+         Excel silently invalidates the signature whenever it re-saves
+         the project after you sign it (e.g. via the "Remove personal
+         information from file properties on save" privacy option), which
+         leaves the parts behind but breaks the signature. That is the
+         usual reason the Publisher column stays blank despite "signing".
       4. Locks the signed add-in file read-only so Excel cannot re-save
          it and invalidate the signature again. Use -NoLock to skip.
 
@@ -124,6 +125,13 @@ if (-not $XlamPath -or -not (Test-Path $XlamPath)) {
 }
 $XlamPath = (Resolve-Path $XlamPath).Path
 
+# Shared zip-surgery helpers (Remove-XlamSignatureParts, Test-XlamRibbonWiring,
+# Repair-XlamRibbonWiring). Dot-sourced ONCE here - used by the clean-slate
+# strip, the ribbon re-injection and the deploy wiring check below.
+$utilsScript = Join-Path $scriptDir "xlam-ribbon-utils.ps1"
+if (Test-Path $utilsScript) { . $utilsScript }
+else { throw "Shared helper not found: $utilsScript" }
+
 Write-Host ""
 Write-Host "Add-in to sign : $XlamPath" -ForegroundColor Cyan
 Write-Host "Publisher name  : $PublisherName" -ForegroundColor Cyan
@@ -220,6 +228,33 @@ try {
         }
     } finally { $zip.Dispose() }
 } catch {}
+
+# Strip ANY leftover signature parts before opening for signing, so the VBE
+# signing starts from a provably clean slate. Session finding (Excel 2024
+# build 16.0.20228): repeated manual VBE signing with an incomplete 'Remove'
+# step leaves MULTIPLE conflicting signature parts (legacy + Agile + V3) in
+# one file, and Excel's ADD-IN LOADER refuses such a file outright (it never
+# even loads the add-in - no StartUp in the log) while a direct workbook open
+# tolerates it. Remove-XlamSignatureParts preserves vbaProject.bin and the
+# customUI wiring byte-for-byte, so this is safe on an already-valid signature
+# too - but for THIS flow we want a clean unsigned file so the one signature
+# we are about to apply is the only one.
+if ($hasSigParts -and (Get-Command Remove-XlamSignatureParts -ErrorAction SilentlyContinue)) {
+    $tmpClean = Join-Path $env:TEMP ("excel-clean-" + [Guid]::NewGuid().ToString("N") + ".xlam")
+    try {
+        $cleaned = Remove-XlamSignatureParts -Path $XlamPath -OutPath $tmpClean
+        if ($cleaned -and (Test-Path $tmpClean)) {
+            Copy-Item $tmpClean $XlamPath -Force
+            Write-Host "Stripped leftover signature parts - signing from a clean slate." -ForegroundColor Green
+            $hasSigParts = $false
+        }
+    } catch {
+        Write-Warning "Could not strip leftover signature parts: $($_.Exception.Message)"
+    } finally {
+        Remove-Item $tmpClean -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if ($hasSigParts) {
     Write-Host ""
     Write-Host "NOTE: the add-in file already contains a signature. If the Digital Signature dialog" -ForegroundColor Yellow
@@ -235,7 +270,7 @@ Write-Host ""
 Write-Host "Opening the add-in in Excel and showing the Visual Basic Editor..." -ForegroundColor Cyan
 Write-Host ""
 Write-Host "In the Visual Basic Editor, do the following:" -ForegroundColor Yellow
-Write-Host "  0. Make sure 'VBAProject (excel-highlighter.xlam)' is selected in the"
+Write-Host "  0. Make sure 'Highlighter (excel-highlighter.xlam)' is selected in the"
 Write-Host "     Project Explorer pane (left side). Press Ctrl+R if you can't see it."
 Write-Host "  1. Menu: Tools > Digital Signature..."
 Write-Host "     - If the dialog ALREADY shows a signature, click 'Remove' first."
@@ -276,15 +311,24 @@ try {
 
     [void](Read-Host "Press Enter after you have signed AND saved the project in the VBA editor (Ctrl+S)")
 
-    # Advisory check only. VBProject.Signed is known to report a false
-    # "not signed" even when the user just signed it, so we don't trust it
-    # alone - the saved file is the authoritative check.
+    # Advisory check only - and now with the correct interpretation. The VBE's
+    # VBProject.Signed is authoritative on a fully READABLE project: False means
+    # the signature genuinely did not stick. (The known false negative applies
+    # only to LOCKED/password-protected projects like ASAP Utilities - where the
+    # property reads False because Excel cannot evaluate it. Our project is
+    # always readable, so on this file Signed=False is a real failure.)
     $isSigned = $false
+    $componentsReadable = $false
     try { $isSigned = [bool]$wb.VBProject.Signed } catch { $isSigned = $false }
+    try { $componentsReadable = $wb.VBProject.VBComponents.Count -gt 0 } catch { $componentsReadable = $false }
     if ($isSigned) {
         Write-Host "Signature detected in the VBA project." -ForegroundColor Green
+    } elseif ($componentsReadable) {
+        Write-Warning "VBProject.Signed reports no signature, and the project is fully readable - this is a REAL failure, not a false negative. The signature did not stick."
+        Write-Host "  Redo the dialog carefully: Tools > Digital Signature > (Remove if shown) >" -ForegroundColor Yellow
+        Write-Host "  Choose... > '$PublisherName' > OK > OK > then Ctrl+S to save." -ForegroundColor Yellow
     } else {
-        Write-Warning "VBProject.Signed reports no signature. This is often a false negative (the check is unreliable) - the saved file is the real test."
+        Write-Warning "VBProject.Signed reports no signature. The project is not readable here (locked?) - the saved file is the real test."
     }
 
     # If the user saved from inside the VBE (Ctrl+S), the file has changed and
@@ -313,6 +357,50 @@ try {
         try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null } catch {}
     }
     Start-Sleep -Milliseconds 500
+}
+
+# --- step 2b: re-inject the customUI ribbon wiring into the SIGNED file ------
+# CRITICAL (session finding, Excel 2024 build 16.0.20228): Excel re-saves the
+# add-in when you sign it in the VBE and save. That re-save regenerates
+# xl/_rels/workbook.xml.rels and DROPS the customUI relationship (Excel does
+# not understand the customUI part). The file then contains the part but no
+# longer points at it from the workbook - and a present-but-unwired part masks
+# IRibbonExtensibility.GetCustomUI while never being processed, so the ribbon
+# silently never loads (no tab, onLoad never fired, GetCustomUI never called,
+# no error - exactly the symptom this whole investigation chased).
+#
+# Re-inject the wiring into the saved file NOW (after the Excel save, before
+# any read-only lock). The repair copies every other package entry byte-for-
+# byte, so xl/vbaProject.bin and the signature parts are untouched and the
+# signature digest we verify in step 3 stays valid.
+if (Get-Command Repair-XlamRibbonWiring -ErrorAction SilentlyContinue) {
+    $customUiSource = Join-Path $repoRoot "customUI\customUI14.xml"
+    if (Test-Path $customUiSource) {
+        $tmpRepaired = Join-Path $env:TEMP ("excel-repaired-" + [Guid]::NewGuid().ToString("N") + ".xlam")
+        $repaired = $null
+        try {
+            $repaired = Repair-XlamRibbonWiring -Path $XlamPath -CustomUiXmlSource $customUiSource -OutPath $tmpRepaired
+        } catch {
+            Write-Warning "Ribbon re-injection failed: $($_.Exception.Message)"
+        }
+        if ($repaired -and (Test-Path $tmpRepaired)) {
+            try {
+                Copy-Item $tmpRepaired $XlamPath -Force
+                Remove-Item $tmpRepaired -Force -ErrorAction SilentlyContinue
+                Write-Host "Ribbon wiring re-injected after signing save (Excel had stripped it)." -ForegroundColor Green
+            } catch {
+                Remove-Item $tmpRepaired -Force -ErrorAction SilentlyContinue
+                Write-Warning "Repaired copy written but could not replace $XlamPath ($($_.Exception.Message)) - close Excel fully and re-run the signing script."
+            }
+        } else {
+            Remove-Item $tmpRepaired -Force -ErrorAction SilentlyContinue
+            Write-Warning "Could not re-inject ribbon wiring - the signed add-in may still load without its ribbon tab. Check customUI/customUI14.xml exists and re-run."
+        }
+    } else {
+        Write-Warning "customUI14.xml not found at $customUiSource - cannot re-inject ribbon wiring."
+    }
+} else {
+    Write-Warning "Repair-XlamRibbonWiring not available - skipping ribbon re-injection."
 }
 
 # --- step 3: verify the signature from the saved file itself -----------------
@@ -410,8 +498,77 @@ function Test-AddinSignatureState {
 }
 
 Write-Host ""
-Write-Host "Verifying the saved file cryptographically..." -ForegroundColor Cyan
-$sigState = Test-AddinSignatureState $XlamPath
+Write-Host "Verifying the saved file..." -ForegroundColor Cyan
+
+# --- step 3a: Excel's own verdict (authoritative) ----------------------------
+# The digest verifier below is known UNRELIABLE (it reports 'Stale' even for
+# ASAP Utilities, whose ribbon demonstrably renders) - VBA Agile/V3 signatures
+# do not embed a plain MD5/SHA1/SHA256 of vbaProject.bin, which is what it
+# scans for. Excel itself is the only trustworthy judge: open the file in a
+# fresh hidden instance and read VBProject.Signed. On our fully-readable
+# project that verdict is authoritative - False means the signature genuinely
+# did not land (the false-negative case only applies to locked projects).
+function Test-FreshOpenSignature {
+    param([string]$Path)
+    # Presence of signature parts is decided from the package itself (zip) -
+    # it distinguishes "no signature was ever applied" from "parts exist but
+    # Excel doesn't consider them valid", which have different messages.
+    $hasParts = $false
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+        try {
+            foreach ($p in @("xl/vbaProjectSignature.bin", "xl/vbaProjectSignatureAgile.bin", "xl/vbaProjectSignatureV3.bin")) {
+                if ($zip.GetEntry($p)) { $hasParts = $true; break }
+            }
+        } finally { $zip.Dispose() }
+    } catch {}
+    $checkExcel = $null
+    $checkWb = $null
+    try {
+        $checkExcel = New-Object -ComObject Excel.Application
+        $checkExcel.Visible = $false
+        $checkExcel.DisplayAlerts = $false
+        $checkExcel.EnableEvents = $false
+        try { $checkExcel.AutomationSecurity = 1 } catch {}
+        # Close any copy of this add-in already loaded via the OPEN key in this
+        # instance (the compile-check pattern), then open the file directly.
+        try {
+            foreach ($wb in $checkExcel.Workbooks) {
+                if ($wb.IsAddin -and $wb.Name -like "excel-highlighter*") { $wb.Close($false) }
+            }
+        } catch {}
+        $checkWb = $checkExcel.Workbooks.Open($Path)
+        $signed = $false
+        $readable = $false
+        try { $signed = [bool]$checkWb.VBProject.Signed } catch { $signed = $false }
+        try { $readable = $checkWb.VBProject.VBComponents.Count -gt 0 } catch { $readable = $false }
+        return [PSCustomObject]@{ Signed = $signed; Readable = $readable; HasParts = $hasParts }
+    } catch {
+        return [PSCustomObject]@{ Signed = $false; Readable = $false; HasParts = $hasParts; Error = $_.Exception.Message }
+    } finally {
+        try { if ($checkWb) { $checkWb.Close($false) } } catch {}
+        try { if ($checkExcel) { $checkExcel.Quit() } } catch {}
+        try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($checkExcel) | Out-Null } catch {}
+    }
+}
+
+$fresh = Test-FreshOpenSignature $XlamPath
+$sigState = "None"
+if ($fresh.Readable) {
+    if ($fresh.Signed) {
+        $sigState = "Valid"
+        Write-Host "Excel's own verdict (fresh open): VALID signature on the readable project." -ForegroundColor Green
+    } elseif ($fresh.HasParts) {
+        $sigState = "Stale"
+        Write-Host "Excel's own verdict (fresh open): signature parts exist but the readable project has NO valid signature." -ForegroundColor Yellow
+    } else {
+        $sigState = "None"
+        Write-Host "Excel's own verdict (fresh open): no signature parts at all - the signature did not land." -ForegroundColor Yellow
+    }
+} else {
+    Write-Warning "Could not read the project in a fresh Excel instance ($($fresh.Error)) - falling back to the cryptographic digest check (known unreliable)."
+    $sigState = Test-AddinSignatureState $XlamPath
+}
 
 switch ($sigState) {
     "Valid" {
@@ -428,12 +585,16 @@ switch ($sigState) {
         Write-Host "Restart Excel and check File > Options > Add-ins - the Publisher column now shows '$PublisherName'." -ForegroundColor Green
     }
     "Stale" {
-        Write-Warning "PARTIAL: the file contains signature parts, but they do NOT match the current project - the signature is INVALID."
-        Write-Host "This is what happens when the project is re-saved AFTER signing (Excel re-saving the add-in," -ForegroundColor Yellow
-        Write-Host "e.g. via the 'Remove personal information from file properties on save' privacy option, breaks" -ForegroundColor Yellow
-        Write-Host "the digest). If you just signed in this run, the signature dialog may not have been completed" -ForegroundColor Yellow
-        Write-Host "(both OK clicks), or the wrong project was selected. Re-run this script, sign again, and the" -ForegroundColor Yellow
-        Write-Host "read-only lock will then stop Excel from breaking it a second time." -ForegroundColor Yellow
+        Write-Warning "PARTIAL: the file contains signature parts, but Excel does not consider them valid - the signature did NOT stick."
+        Write-Host "The most common causes, in order:" -ForegroundColor Yellow
+        Write-Host "  1. The Digital Signature dialog was not completed - you must click 'Choose...'," -ForegroundColor Yellow
+        Write-Host "     select '$PublisherName', and click OK on BOTH dialogs before saving." -ForegroundColor Yellow
+        Write-Host "  2. The project was saved AFTER signing (Excel re-saving the add-in, e.g. via the" -ForegroundColor Yellow
+        Write-Host "     'Remove personal information from file properties on save' privacy option," -ForegroundColor Yellow
+        Write-Host "     breaks the digest) - the read-only lock this script applies prevents that." -ForegroundColor Yellow
+        Write-Host "  3. The wrong project was selected in the Project Explorer." -ForegroundColor Yellow
+        Write-Host "Re-run this script and sign again - leftover parts are now stripped automatically," -ForegroundColor Yellow
+        Write-Host "so each attempt starts from a clean slate." -ForegroundColor Yellow
         if ($saveError) {
             Write-Host ""
             Write-Host "The save itself also reported an error ($($saveError.Exception.Message)) - the file may" -ForegroundColor Yellow
@@ -446,7 +607,7 @@ switch ($sigState) {
         Write-Host "  - The Digital Signature dialog was not completed - make sure you clicked"
         Write-Host "    'Choose...', selected '$PublisherName', and clicked OK on BOTH dialogs."
         Write-Host "  - The wrong project was selected. In the Project Explorer (Ctrl+R),"
-        Write-Host "    single-click 'VBAProject (excel-highlighter.xlam)' BEFORE opening"
+        Write-Host "    single-click 'Highlighter (excel-highlighter.xlam)' BEFORE opening"
         Write-Host "    Tools > Digital Signature."
         Write-Host "  - Excel's 'Remove personal information from file properties on save'"
         Write-Host "    privacy option can strip signatures on save (File > Options > Trust"
@@ -465,6 +626,23 @@ if ($Deploy -and $XlamPath -ne $installedTarget) {
     $targetDir = Split-Path $installedTarget
     if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
     try {
+        # Verify the wiring in the file being deployed BEFORE copying - a signed
+        # file that lost its customUI rels (Excel re-save during signing) would
+        # otherwise ship a present-but-unwired part whose ribbon never loads.
+        $deployCheck = Test-XlamRibbonWiring $XlamPath
+        if (-not $deployCheck.Ok -and (Get-Command Repair-XlamRibbonWiring -ErrorAction SilentlyContinue)) {
+            $customUiSource = Join-Path $repoRoot "customUI\customUI14.xml"
+            $tmpRepaired = Join-Path $env:TEMP ("excel-deploy-repair-" + [Guid]::NewGuid().ToString("N") + ".xlam")
+            $repaired = Repair-XlamRibbonWiring -Path $XlamPath -CustomUiXmlSource $customUiSource -OutPath $tmpRepaired
+            if ($repaired) {
+                Copy-Item $repaired $XlamPath -Force
+                Remove-Item $tmpRepaired -Force -ErrorAction SilentlyContinue
+                Write-Host "Ribbon wiring repaired before deploy." -ForegroundColor Green
+            } else {
+                Remove-Item $tmpRepaired -Force -ErrorAction SilentlyContinue
+                Write-Warning "Deployed file is missing customUI wiring and repair failed - the ribbon tab may not appear."
+            }
+        }
         Copy-Item $XlamPath $installedTarget -Force
         Write-Host "Deployed signed add-in to: $installedTarget" -ForegroundColor Green
         if ($sigState -eq "Valid" -and -not $NoLock) {

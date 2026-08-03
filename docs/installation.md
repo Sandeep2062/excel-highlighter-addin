@@ -78,8 +78,12 @@ Useful switches:
 
 ## Troubleshooting
 
-- **No "Highlighter" tab appears**: Ensure macros and add-ins are allowed in Excel Trust Center. If Excel was open during installation, restart Excel.
-- **Colour swatches show as blank squares**: Confirm the `images` folder sits inside `%APPDATA%\Microsoft\AddIns\ExcelHighlighter\images\`.
+- **No "Highlighter" tab appears**: Two confirmed causes, in order of likelihood:
+  1. **The add-in was registered with `/R` in the Excel `OPEN` registry value** (fixed in 2.1.0). Older `install.ps1` versions wrote `/R "...excel-highlighter.xlam"`. With `/R` the add-in shows as installed/checked in the Add-ins dialog but **never actually loads** - no `Workbook_Open`, no ribbon tab, no error. That is the exact symptom reported across multiple PCs and Excel versions. 2.1.0 writes the plain quoted path (the same format Excel and working add-ins such as ASAP Utilities use). If you installed with any earlier version, **re-run `install.bat` after closing Excel**. The installer now also sweeps and removes every stale `OPEN*` value referencing the add-in, not just the first one.
+  2. **Excel 2024 / recent Microsoft 365 builds suppress the custom ribbon for unsigned add-ins (strongly indicated).** Verified empirically on Excel 2024 (build 16.0.20228): every delivery mechanism for an unsigned add-in - the customUI part, VBA `IRibbonExtensibility`, even a bare part-only add-in - fails to render its tab while macros still run. The one add-in whose ribbon does render on the same machine is digitally signed by a certificate in the user's Trusted Publishers store. Fix: `install.ps1` imports the self-signed "Sandeep Khadka" certificate into **Trusted Publishers** automatically, then run `scripts/sign-xlam.ps1 -Deploy -Trust` once (see Option D) to sign the add-in - the confirming test (signing and seeing the tab appear) is this manual step.
+
+  Otherwise: ensure macros and add-ins are allowed in Excel Trust Center. If Excel was open during installation, restart Excel.
+- **Colour gallery shows text labels instead of colour swatches**: expected - the ribbon deliberately uses native `imageMso` icons (see the 2.0.1 changelog note on why dynamic GDI swatches were removed to keep the tab loading reliably on 64-bit Office). The `images` folder is no longer referenced by the ribbon.
 - **Errors log location**: Checked silently under `%APPDATA%\ExcelCrosshairHighlighter\ExcelCrosshairHighlighter.log`.
 - **Publisher column is blank in the Add-ins dialog**: the VBA project is not validly signed - run `scripts/sign-xlam.ps1` (see Option D).
 - **Script says "No signature detected" but I did sign**: the script's in-memory check is unreliable; trust the final cryptographic verification. If it says the signature is **stale** (parts present but digest mismatch), Excel re-saved the project after you signed it, invalidating the signature - the script's read-only lock prevents this from happening again; re-run it once more.

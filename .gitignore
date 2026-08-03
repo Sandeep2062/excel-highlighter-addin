@@ -1,0 +1,9 @@
+# Freebuff agent workspace & diagnostics (not part of the project)
+.freebuff/
+
+# Diagnostic build variants and probe workbooks
+excel-highlighter-nopart.xlam
+probe-*.xlsx
+
+# Generated artifacts (built into %APPDATA%\Microsoft\AddIns\ExcelHighlighter)
+ExcelHighlighterRibbon.dll

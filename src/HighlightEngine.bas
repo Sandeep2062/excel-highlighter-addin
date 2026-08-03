@@ -8,14 +8,19 @@ Attribute VB_Name = "HighlightEngine"
 '             We never touch Interior.Color directly - that would permanently
 '             clobber whatever formatting the user already has. Instead each
 '             monitored workbook gets two hidden, workbook-scoped defined
-'             names (_XLCH_Row / _XLCH_Col) that hold the active row/column as
+'             names (XLCH_Row / XLCH_Col) that hold the active row/column as
 '             plain numeric constants. Conditional formatting rules on the
-'             worksheet reference those names (e.g. "=ROW()=_XLCH_Row"), so
+'             worksheet reference those names (e.g. "=ROW()=XLCH_Row"), so
 '             on every selection change we only need to update two Name
 '             values - a very cheap operation - rather than add/remove CF
 '             rules on every keystroke. CF rules themselves are only
 '             (re)built when a sheet is seen for the first time, or when the
 '             user changes mode/colour/enabled state from the ribbon.
+'
+'             NOTE: the names use the clean "XLCH_" prefix (no leading
+'             underscore) - modern Excel 2024 defined-name parsers reject
+'             leading-underscore names like _XLCH_Row with error 1004. See
+'             Constants.bas for the full story.
 '
 '             To keep this workable on very large sheets (1,048,576 rows x
 '             16,384 columns) the CF rules are scoped to the union of the
@@ -38,8 +43,28 @@ Option Explicit
 ' Value : "<mode>|<rgb>" signature string
 Private mTrackers As Object
 
-' Timer ID for the animation pulse, so we can cancel it if settings change.
-Private mAnimationTimerID As String
+' Session-only per-workbook "highlight on" markers. Used only when
+' Settings.ScopeAll is False (the default): the toggle then affects the
+' active workbook only, and this dictionary remembers which workbooks have
+' been switched on, so turning the highlight off in workbook B does not
+' switch it off in workbook A. Key: wb.Name (unique within an instance).
+Private mWorkbookEnabled As Object
+
+' Pulse "generation" counter. Every TriggerAnimationPulse bumps it; each
+' scheduled PulseStep carries the generation it was launched with and
+' immediately exits if a newer pulse has started. This cleanly kills stale
+' timer chains without relying on Application.OnTime cancellation (which
+' requires the exact same EarliestTime + procedure string to be passed back,
+' and silently no-ops if the string differs by even one character).
+Private mPulseGeneration As Long
+
+' Separator used inside the pulse "workbook/worksheet" payload passed through
+' Application.OnTime's procedure string. NOT the pipe character - sheet names
+' may legally contain "|", which would corrupt Split(). vbVerticalTab (Chr 11)
+' is a built-in constant (legal in a Const - a Chr$() call would be a "constant
+' expression required" compile error) and is not typeable in either a sheet
+' tab name or a file name.
+Private Const PULSE_SEP As String = vbVerticalTab
 
 '-------------------------------------------------------------------------------
 ' EnsureTrackers
@@ -48,7 +73,69 @@ Private Sub EnsureTrackers()
     If mTrackers Is Nothing Then
         Set mTrackers = CreateObject("Scripting.Dictionary")
     End If
+    If mWorkbookEnabled Is Nothing Then
+        Set mWorkbookEnabled = CreateObject("Scripting.Dictionary")
+    End If
 End Sub
+
+'-------------------------------------------------------------------------------
+' IsWorkbookHighlightActive
+' The single gate that decides whether a workbook should be highlighted right
+' now. With ScopeAll=True ("apply to all open workbooks") any eligible
+' workbook is active whenever Settings.enabled is on. With ScopeAll=False
+' (the default, per-workbook), only workbooks the user has switched on in
+' this session are active - other open workbooks stay untouched.
+'-------------------------------------------------------------------------------
+Public Function IsWorkbookHighlightActive(ByVal wb As Workbook) As Boolean
+    On Error Resume Next
+    If Not Settings.enabled Then Exit Function
+    If Settings.ScopeAll Then
+        IsWorkbookHighlightActive = True
+    Else
+        IsWorkbookHighlightActive = mWorkbookEnabled.Exists(wb.name)
+    End If
+    On Error GoTo 0
+End Function
+
+'-------------------------------------------------------------------------------
+' SetWorkbookEnabled / WorkbookEnabled / ClearWorkbookEnabled
+' Per-workbook toggle state (only meaningful when ScopeAll is False).
+'-------------------------------------------------------------------------------
+Public Sub SetWorkbookEnabled(ByVal wb As Workbook, ByVal onState As Boolean)
+    EnsureTrackers
+    If onState Then
+        mWorkbookEnabled(wb.name) = True
+    Else
+        If mWorkbookEnabled.Exists(wb.name) Then mWorkbookEnabled.Remove wb.name
+    End If
+End Sub
+
+Public Function WorkbookEnabled(ByVal wb As Workbook) As Boolean
+    EnsureTrackers
+    On Error Resume Next
+    WorkbookEnabled = mWorkbookEnabled.Exists(wb.name)
+    On Error GoTo 0
+End Function
+
+Public Sub ClearWorkbookEnabled(ByVal wb As Workbook)
+    EnsureTrackers
+    If mWorkbookEnabled.Exists(wb.name) Then mWorkbookEnabled.Remove wb.name
+End Sub
+
+'-------------------------------------------------------------------------------
+' ActiveWorkbookHighlightState
+' Convenience for the ribbon getPressed/getLabel callbacks: the effective
+' on/off state of the workbook that currently owns the ribbon (ActiveWorkbook
+' when the callback runs).
+'-------------------------------------------------------------------------------
+Public Function ActiveWorkbookHighlightState() As Boolean
+    On Error Resume Next
+    Dim wb As Workbook
+    Set wb = ActiveWorkbook
+    If wb Is Nothing Then Exit Function
+    ActiveWorkbookHighlightState = IsWorkbookHighlightActive(wb)
+    On Error GoTo 0
+End Function
 
 '-------------------------------------------------------------------------------
 ' HandleSelectionChange
@@ -78,6 +165,9 @@ Public Sub HandleSelectionChange(ByVal sh As Object, ByVal target As Range)
     Set wb = ws.Parent
 
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
+
+    ' Per-workbook scope: skip workbooks that were never toggled on.
+    If Not IsWorkbookHighlightActive(wb) Then Exit Sub
 
     ' Check per-workbook exclusion before doing anything else.
     If Utilities.WorkbookIsExcluded(wb) Then
@@ -133,7 +223,7 @@ End Sub
 Public Sub HandleWorkbookOpen(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.enabled Then Exit Sub
+    If Not IsWorkbookHighlightActive(wb) Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
@@ -144,7 +234,7 @@ End Sub
 Public Sub HandleWorkbookActivate(ByVal wb As Workbook)
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.enabled Then Exit Sub
+    If Not IsWorkbookHighlightActive(wb) Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
@@ -157,7 +247,7 @@ Public Sub HandleWindowActivate(ByVal wb As Workbook)
     ' two event sources stay independently traceable in the log.
     On Error GoTo ErrHandler
     If Not Utilities.WorkbookIsEligible(wb) Then Exit Sub
-    If Not Settings.enabled Then Exit Sub
+    If Not IsWorkbookHighlightActive(wb) Then Exit Sub
     If Utilities.WorkbookIsExcluded(wb) Then Exit Sub
     EnsureNamesExist wb
     Exit Sub
@@ -197,6 +287,9 @@ Public Sub HandleWorkbookBeforeClose(ByVal wb As Workbook)
     Utilities.SafeDeleteName wb, NAME_ROW_END_PREFIX
     Utilities.SafeDeleteName wb, NAME_COL_PREFIX
     Utilities.SafeDeleteName wb, NAME_COL_END_PREFIX
+    Utilities.DeleteLegacyNames wb
+
+    ClearWorkbookEnabled wb
 
     Exit Sub
 
@@ -240,6 +333,24 @@ Public Sub ReapplyAllOpenWorkbooks()
                 Utilities.SafeDeleteName wb, NAME_ROW_END_PREFIX
                 Utilities.SafeDeleteName wb, NAME_COL_PREFIX
                 Utilities.SafeDeleteName wb, NAME_COL_END_PREFIX
+                Utilities.DeleteLegacyNames wb
+                ' Also forget any per-workbook "on" marker - the whole
+                ' highlighter is off.
+                ClearWorkbookEnabled wb
+            ElseIf Not IsWorkbookHighlightActive(wb) Then
+                ' Per-workbook scope (ScopeAll=False) and this workbook was
+                ' never toggled on: strip any leftover highlight so a
+                ' previously-enabled workbook being toggled off loses its
+                ' paint, while other workbooks keep theirs.
+                For Each ws In wb.Worksheets
+                    RemoveOurConditionalFormatting ws
+                    UntrackSheet wb, ws
+                Next ws
+                Utilities.SafeDeleteName wb, NAME_ROW_PREFIX
+                Utilities.SafeDeleteName wb, NAME_ROW_END_PREFIX
+                Utilities.SafeDeleteName wb, NAME_COL_PREFIX
+                Utilities.SafeDeleteName wb, NAME_COL_END_PREFIX
+                Utilities.DeleteLegacyNames wb
             Else
                 EnsureNamesExist wb
                 ' Rebuild only sheets we already know about, plus the sheet
@@ -282,19 +393,19 @@ Public Sub EnsureNamesExist(ByVal wb As Workbook)
 ' re-enabling highlighting on a previously excluded workbook.
 
     If Not Utilities.NameExists(wb, NAME_ROW_PREFIX) Then
-        wb.Names.Add name:=NAME_ROW_PREFIX, RefersTo:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_ROW_END_PREFIX) Then
-        wb.Names.Add name:=NAME_ROW_END_PREFIX, RefersTo:="=1", Visible:=False
+        wb.Names.Add name:=NAME_ROW_END_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_PREFIX) Then
-        wb.Names.Add name:=NAME_COL_PREFIX, RefersTo:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
     If Not Utilities.NameExists(wb, NAME_COL_END_PREFIX) Then
-        wb.Names.Add name:=NAME_COL_END_PREFIX, RefersTo:="=1", Visible:=False
+        wb.Names.Add name:=NAME_COL_END_PREFIX, RefersToR1C1:="=1", Visible:=False
     End If
 
 End Sub
@@ -324,30 +435,18 @@ Private Sub UpdatePositionNames(ByVal wb As Workbook, ByVal target As Range)
         cEnd = target.Column + target.Columns.count - 1
     End If
 
-    Dim nRow As name, nRowEnd As name, nCol As name, nColEnd As name
-    Set nRow = Utilities.GetNameObject(wb, NAME_ROW_PREFIX)
-    Set nRowEnd = Utilities.GetNameObject(wb, NAME_ROW_END_PREFIX)
-    Set nCol = Utilities.GetNameObject(wb, NAME_COL_PREFIX)
-    Set nColEnd = Utilities.GetNameObject(wb, NAME_COL_END_PREFIX)
-
-    If Not nRow Is Nothing Then nRow.RefersTo = "=" & rStart
-    If Not nRowEnd Is Nothing Then nRowEnd.RefersTo = "=" & rEnd
-    If Not nCol Is Nothing Then nCol.RefersTo = "=" & cStart
-    If Not nColEnd Is Nothing Then nColEnd.RefersTo = "=" & cEnd
+    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & rStart
+    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & rEnd
+    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & cStart
+    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & cEnd
     Exit Sub
 
 Fallback:
     On Error Resume Next
-    EnsureNamesExist wb
-    Set nRow = Utilities.GetNameObject(wb, NAME_ROW_PREFIX)
-    Set nRowEnd = Utilities.GetNameObject(wb, NAME_ROW_END_PREFIX)
-    Set nCol = Utilities.GetNameObject(wb, NAME_COL_PREFIX)
-    Set nColEnd = Utilities.GetNameObject(wb, NAME_COL_END_PREFIX)
-
-    If Not nRow Is Nothing Then nRow.RefersTo = "=" & target.Row
-    If Not nRowEnd Is Nothing Then nRowEnd.RefersTo = "=" & target.Row
-    If Not nCol Is Nothing Then nCol.RefersTo = "=" & target.Column
-    If Not nColEnd Is Nothing Then nColEnd.RefersTo = "=" & target.Column
+    wb.Names(NAME_ROW_PREFIX).RefersToR1C1 = "=" & target.Row
+    wb.Names(NAME_ROW_END_PREFIX).RefersToR1C1 = "=" & target.Row
+    wb.Names(NAME_COL_PREFIX).RefersToR1C1 = "=" & target.Column
+    wb.Names(NAME_COL_END_PREFIX).RefersToR1C1 = "=" & target.Column
     On Error GoTo 0
 
 End Sub
@@ -405,11 +504,13 @@ Public Sub RebuildConditionalFormatting(ByVal ws As Worksheet)
             ' When per-mode colours are enabled, row and column can differ.
             AddRule targetRange, "=" & rowExpr, rowColour, style
             AddRule targetRange, "=" & colExpr, colColour, style
-            ' Add intersection accent if enabled.
+            ' Add intersection accent if enabled. Deliberately a SEPARATE rule
+            ' from AddRule: it must StopIfTrue so it always wins at the exact
+            ' cursor cell regardless of Excel's rule-precedence quirks, and in
+            ' Border style it also fills the cell so it stays visible.
             If Settings.IntersectionEnabled Then
-                Dim interColour As Long
-                interColour = Settings.IntersectionRGB
-                AddRule targetRange, "=AND(" & rowExpr & "," & colExpr & ")", interColour, style
+                AddIntersectionRule targetRange, "=AND(" & rowExpr & "," & colExpr & ")", _
+                                    IntersectionAccentRGB(), style
             End If
         Case hmCell
             AddRule targetRange, "=AND(" & rowExpr & "," & colExpr & ")", rowColour, style
@@ -484,22 +585,92 @@ Private Sub AddRule(ByVal targetRange As Range, ByVal formula As String, ByVal c
     Dim fc As FormatCondition
     Set fc = targetRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
 
-    With fc
-        If style = hsFill Then
-            .Interior.Color = colour
-        Else
-            ' Border style: use a thick border in the given colour.
-            .Borders.LineStyle = xlContinuous
-            .Borders.Weight = xlThick
-            .Borders.Color = colour
-        End If
-        .StopIfTrue = False
+    ' Empirically verified on Excel 2024: FormatCondition.Borders does NOT
+    ' accept .Weight (raises error 1004). If Weight is assigned before
+    ' Color (as older versions of this add-in did), the error aborts the
+    ' block before Color is set, so the border renders thin and black no
+    ' matter what colour was requested. Correct order: Colour first,
+    ' LineStyle second, Weight last (best-effort, tolerated failure).
+    If style = hsFill Then
+        fc.Interior.Color = colour
+    Else
         On Error Resume Next
-        .SetFirstPriority
+        fc.Borders.Color = colour
+        fc.Borders.LineStyle = xlContinuous
+        fc.Borders.Weight = xlThick
         On Error GoTo 0
-    End With
+    End If
+
+    On Error Resume Next
+    fc.StopIfTrue = False
+    fc.SetFirstPriority
+    On Error GoTo 0
 
 End Sub
+
+'-------------------------------------------------------------------------------
+' AddIntersectionRule
+' Description : The cursor-cell accent in Crosshair mode. Kept separate from
+'               AddRule for two reasons:
+'               1. StopIfTrue=True - the accent must win at the exact
+'                  intersection cell. Without it, Excel's rule precedence
+'                  lets the later row/column rules override the accent, which
+'                  is exactly why Intersect looked broken before.
+'               2. In Border style the accent also fills the cell, so the
+'                  cursor cell is clearly visible even though the surrounding
+'                  highlight is border-only.
+' Parameters  : targetRange   - range the rule is applied to
+'               formula        - the expression formula
+'               accentColour   - the (already darkened) accent fill colour
+'               style          - the active highlight style (fill or border)
+'-------------------------------------------------------------------------------
+Private Sub AddIntersectionRule(ByVal targetRange As Range, ByVal formula As String, _
+                                ByVal accentColour As Long, ByVal style As HighlightStyle)
+
+    Dim fc As FormatCondition
+    Set fc = targetRange.FormatConditions.Add(Type:=xlExpression, Formula1:=formula)
+
+    On Error Resume Next
+    fc.Interior.Color = accentColour
+    If style = hsBorder Then
+        fc.Borders.Color = accentColour
+        fc.Borders.LineStyle = xlContinuous
+        fc.Borders.Weight = xlThick
+    End If
+    fc.StopIfTrue = True
+    fc.SetFirstPriority
+    On Error GoTo 0
+
+End Sub
+
+'-------------------------------------------------------------------------------
+' IntersectionAccentRGB
+' Description : The colour for the crosshair intersection accent cell. If the
+'               user has explicitly configured a custom intersection colour
+'               (anything other than the factory default), honour it -
+'               otherwise derive a clearly darker version of the current
+'               highlight colour so the accent is always visibly stronger
+'               than the row/column band. A fixed accent colour equal to the
+'               highlight colour is exactly why the old behaviour looked
+'               broken (both were yellow).
+' Returns     : Long - BGR colour value for the accent cell
+'-------------------------------------------------------------------------------
+Private Function IntersectionAccentRGB() As Long
+    On Error Resume Next
+    Dim base As Long
+    base = Settings.EffectiveRGB
+    ' RGB_YELLOW doubles as the "no custom colour configured" sentinel, so an
+    ' explicitly configured YELLOW accent is deliberately treated as unset
+    ' and falls through to the darkened auto-accent. (Known limitation: you
+    ' can't pick plain yellow as a custom intersection colour - pick a
+    ' different shade, or clear it to get the auto-darkened one.)
+    If Settings.IntersectionRGB <> RGB_YELLOW And Settings.IntersectionRGB <> base Then
+        IntersectionAccentRGB = Settings.IntersectionRGB
+    Else
+        IntersectionAccentRGB = Utilities.DarkenColour(base, 55)
+    End If
+    On Error GoTo 0
+End Function
 
 '-------------------------------------------------------------------------------
 ' RemoveOurConditionalFormatting
@@ -589,101 +760,118 @@ End Sub
 ' Description : Briefly flashes the highlight by cycling through a lighter
 '               tint and back. Uses Application.OnTime for the timer loop.
 '               Capped to 3 iterations so it doesn't fight performance.
+'
+'               NOTE (fixed in 2.3.0): older versions formatted the target
+'               time to "hh:mm:ss" before scheduling. That dropped the date
+'               AND the sub-second precision, so OnTime often received a time
+'               that had already passed and the pulse never visibly fired.
+'               The schedule time is now passed as a full-precision Date
+'               (Now + 0.12 seconds as a fraction of a day).
 '-------------------------------------------------------------------------------
 Private Sub TriggerAnimationPulse(ByVal ws As Worksheet)
 
     On Error Resume Next
 
-    ' Cancel any existing animation timer.
-    If Len(mAnimationTimerID) > 0 Then
-        On Error Resume Next
-        Application.OnTime EarliestTime:=CDate(mAnimationTimerID), Procedure:="", Schedule:=False
-        On Error GoTo 0
-    End If
+    ' Bump the generation so any in-flight chain from a previous selection
+    ' change stops at its next tick instead of fighting this new pulse.
+    mPulseGeneration = mPulseGeneration + 1
 
-    ' Schedule the first pulse step.
-    mAnimationTimerID = Format$(Now + TimeValue("00:00:00.1"), "hh:mm:ss")
-    ' Store the sheet info for the pulse callback.
     Dim pulseData As String
-    pulseData = ws.Parent.name & "|" & ws.name
-    Application.OnTime EarliestTime:=CDate(mAnimationTimerID), _
-        Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, 0'"
+    pulseData = ws.Parent.name & PULSE_SEP & ws.name
+    Logging.LogInfo "HighlightEngine.TriggerAnimationPulse", "Pulse started for " & pulseData
+    SchedulePulseStep pulseData, 0, mPulseGeneration
 
+End Sub
+
+'-------------------------------------------------------------------------------
+' SchedulePulseStep
+' Schedules one pulse tick 0.12 seconds from now. Stores no intermediate
+' state - each tick re-derives its sheet from pulseData and its generation
+' is checked in PulseStep.
+'-------------------------------------------------------------------------------
+Private Sub SchedulePulseStep(ByVal pulseData As String, ByVal iteration As Integer, ByVal gen As Long)
+    On Error Resume Next
+    Application.OnTime EarliestTime:=Now + 0.12 / 86400, _
+        Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, " & iteration & ", " & gen & "'"
 End Sub
 
 '-------------------------------------------------------------------------------
 ' PulseStep
 ' Called by Application.OnTime to animate the highlight. Iteration 0-2
-' cycles the colour, then restores the original.
+' cycles the colour, then restores the original (full rebuild, so per-mode
+' colours and the intersection accent are all restored exactly).
 '-------------------------------------------------------------------------------
-Public Sub PulseStep(ByVal pulseData As String, ByVal iteration As Integer)
+Public Sub PulseStep(ByVal pulseData As String, ByVal iteration As Integer, ByVal gen As Long)
 
     On Error GoTo ErrHandler
 
+    ' A newer pulse has started - this chain is stale, stop it now.
+    If gen <> mPulseGeneration Then Exit Sub
+
+    Dim parts() As String
+    parts = Split(pulseData, PULSE_SEP)
+    If UBound(parts) < 1 Then Exit Sub
+
+    Dim wb As Workbook
+    Set wb = Application.Workbooks(parts(0))
+    If wb Is Nothing Then Exit Sub
+
+    Dim ws As Worksheet
+    Set ws = wb.Worksheets(parts(1))
+    If ws Is Nothing Then Exit Sub
+
     If iteration > 2 Then
-        ' Animation complete - restore original colour.
-        Dim parts() As String
-        parts = Split(pulseData, "|")
-        If UBound(parts) >= 1 Then
-            Dim wb As Workbook
-            Set wb = Application.Workbooks(parts(0))
-            If Not wb Is Nothing Then
-                Dim ws As Worksheet
-                Set ws = wb.Worksheets(parts(1))
-                If Not ws Is Nothing Then
-                    RebuildConditionalFormatting ws
-                End If
-            End If
-        End If
-        mAnimationTimerID = ""
+        ' Animation complete - rebuild from settings so every rule (row,
+        ' column and the accent) returns to its exact configured colour.
+        RebuildConditionalFormatting ws
         Exit Sub
     End If
 
-    ' Pulse: alternate between a lighter version and the original.
-    parts = Split(pulseData, "|")
-    If UBound(parts) >= 1 Then
-        Set wb = Application.Workbooks(parts(0))
-        If Not wb Is Nothing Then
-            Set ws = wb.Worksheets(parts(1))
-            If Not ws Is Nothing Then
-                Dim fc As FormatCondition
-                Dim i As Long
-                For i = 1 To ws.Cells.FormatConditions.count
-                    Set fc = ws.Cells.FormatConditions(i)
-                    If fc.Type = xlExpression Then
-                        Dim f As String
-                        f = fc.Formula1
-                        If InStr(1, f, NAME_ROW_PREFIX, vbTextCompare) > 0 _
-                           Or InStr(1, f, NAME_COL_PREFIX, vbTextCompare) > 0 Then
-                            If iteration Mod 2 = 0 Then
-                                ' Lighter tint: blend with white.
-                                Dim r As Long, g As Long, b As Long
-                                r = (fc.Interior.Color \ 65536) Mod 256
-                                g = (fc.Interior.Color \ 256) Mod 256
-                                b = fc.Interior.Color Mod 256
-                                fc.Interior.Color = RGB( _
-                                    (r + 255) \ 2, (g + 255) \ 2, (b + 255) \ 2)
-                            Else
-                                ' Restore original.
-                                fc.Interior.Color = Settings.EffectiveRGB
-                            End If
-                        End If
+    ' Pulse: alternate between a lighter version and the original. Each rule
+    ' is handled individually so per-mode colours survive the middle ticks.
+    Dim fc As FormatCondition
+    Dim i As Long
+    For i = 1 To ws.Cells.FormatConditions.count
+        Set fc = ws.Cells.FormatConditions(i)
+        If fc.Type = xlExpression Then
+            Dim f As String
+            f = fc.Formula1
+            If InStr(1, f, NAME_ROW_PREFIX, vbTextCompare) > 0 _
+               Or InStr(1, f, NAME_COL_PREFIX, vbTextCompare) > 0 Then
+                If iteration Mod 2 = 0 Then
+                    ' Lighter tint: blend the rule's current colour with white.
+                    ' Interior.Color is BGR (0x00BBGGRR): low byte is red,
+                    ' high byte is blue - read in that order.
+                    Dim col As Long, r As Long, g As Long, b As Long
+                    col = fc.Interior.Color
+                    r = col Mod 256
+                    g = (col \ 256) Mod 256
+                    b = (col \ 65536) Mod 256
+                    fc.Interior.Color = RGB((r + 255) \ 2, (g + 255) \ 2, (b + 255) \ 2)
+                Else
+                    ' Restore the rule's own colour by its axis, so per-mode
+                    ' colours don't get flattened to a single effective value.
+                    If InStr(1, f, NAME_ROW_PREFIX, vbTextCompare) > 0 And _
+                       InStr(1, f, NAME_COL_PREFIX, vbTextCompare) > 0 Then
+                        ' Intersection accent rule.
+                        fc.Interior.Color = IntersectionAccentRGB()
+                    ElseIf InStr(1, f, NAME_COL_PREFIX, vbTextCompare) > 0 Then
+                        fc.Interior.Color = Settings.EffectiveColRGB
+                    Else
+                        fc.Interior.Color = Settings.EffectiveRowRGB
                     End If
-                Next i
+                End If
             End If
         End If
-    End If
+    Next i
 
     ' Schedule next step.
-    mAnimationTimerID = Format$(Now + TimeValue("00:00:00.15"), "hh:mm:ss")
-    Application.OnTime EarliestTime:=CDate(mAnimationTimerID), _
-        Procedure:="'HighlightEngine.PulseStep """ & pulseData & """, " & (iteration + 1) & "'"
+    SchedulePulseStep pulseData, iteration + 1, gen
 
     Exit Sub
 
 ErrHandler:
     Logging.LogError "HighlightEngine.PulseStep", Err.Number, Err.Description
-    mAnimationTimerID = ""
 
 End Sub
 

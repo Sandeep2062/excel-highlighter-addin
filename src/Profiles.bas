@@ -35,7 +35,7 @@ Public Sub LoadProfiles()
         mCount = 1
         ReDim mProfiles(0 To 0)
         mProfiles(0).name = "Default"
-        mProfiles(0).ModeIndex = hmCrosshair
+        mProfiles(0).ModeIndex = hmRow
         mProfiles(0).ColourIndex = hcYellow
         mProfiles(0).CustomRGB = RGB_YELLOW
         mProfiles(0).StyleIndex = hsFill

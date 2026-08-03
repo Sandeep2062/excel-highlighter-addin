@@ -32,6 +32,7 @@ Private mHotkeyHistoryFwd  As String
 Private mPerModeColours  As Boolean
 Private mRowColour       As HighlightColour
 Private mColColour       As HighlightColour
+Private mScopeAll        As Boolean
 
 ' NOTE: Recent colours are stored as a comma-separated list in the registry
 ' under KEY_RECENT_COLOURS. The array is rebuilt on load and flushed on write.
@@ -50,7 +51,7 @@ Private Sub EnsureLoaded()
     On Error GoTo Fail
 
     mEnabled = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ENABLED, "False"))
-    mMode = ModeFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_MODE, "CROSSHAIR"))
+    mMode = ModeFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_MODE, "ROW"))
     mColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COLOUR_NAME, "YELLOW"))
     mCustomRGB = CLng(GetSetting(APP_NAME, SECTION_GENERAL, KEY_CUSTOM_RGB, CStr(RGB_YELLOW)))
     mAllowProtected = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ALLOW_PROTECTED, "False"))
@@ -70,6 +71,10 @@ Private Sub EnsureLoaded()
     mRowColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_ROW_COLOUR, "YELLOW"))
     mColColour = ColourFromString(GetSetting(APP_NAME, SECTION_GENERAL, KEY_COL_COLOUR, "YELLOW"))
 
+    ' Highlight scope: False = per-workbook (only the workbook you toggle in),
+    ' True = all open workbooks at once.
+    mScopeAll = CBool(GetSetting(APP_NAME, SECTION_GENERAL, KEY_SCOPE_ALL, "False"))
+
     LoadRecentColours
 
     mLoaded = True
@@ -80,9 +85,10 @@ Fail:
     ' than propagating the error into Workbook_Open.
     Logging.LogError "Settings.EnsureLoaded", Err.Number, Err.Description
     mEnabled = False
-    mMode = hmCrosshair
+    mMode = hmRow
     mColour = hcYellow
     mCustomRGB = RGB_YELLOW
+    mScopeAll = False
     mLoaded = True
 
 End Sub
@@ -215,10 +221,14 @@ End Function
 '-------------------------------------------------------------------------------
 Public Function ApplyDarkModeTint(ByVal baseRGB As Long) As Long
     If DarkMode Then
+        ' baseRGB is Excel's BGR Long (0x00BBGGRR): the low byte is red, the
+        ' high byte is blue. Earlier versions read them in the wrong order
+        ' (treating the value as RRGGBB hex), which swapped red and blue and
+        ' made e.g. yellow render cyan under dark mode. Fixed here.
         Dim r As Long, g As Long, b As Long
-        r = (baseRGB \ 65536) Mod 256
+        r = baseRGB Mod 256
         g = (baseRGB \ 256) Mod 256
-        b = baseRGB Mod 256
+        b = (baseRGB \ 65536) Mod 256
         r = (r * 65 + 35 * 30) \ 100
         g = (g * 65 + 35 * 30) \ 100
         b = (b * 65 + 35 * 30) \ 100
@@ -402,6 +412,25 @@ Public Property Let colColour(ByVal value As HighlightColour)
 End Property
 
 '-------------------------------------------------------------------------------
+' ScopeAll - Get/Let
+' False (default): highlighting only applies to the workbook in which the
+' toggle was switched on (per-workbook). True: toggling on/off affects every
+' open workbook at once - and turning it off from any workbook turns it off
+' for all of them.
+'-------------------------------------------------------------------------------
+Public Property Get ScopeAll() As Boolean
+    EnsureLoaded
+    ScopeAll = mScopeAll
+End Property
+
+Public Property Let ScopeAll(ByVal value As Boolean)
+    EnsureLoaded
+    mScopeAll = value
+    SaveSetting APP_NAME, SECTION_GENERAL, KEY_SCOPE_ALL, CStr(value)
+    Logging.LogInfo "Settings.ScopeAll", "Set to " & value
+End Property
+
+'-------------------------------------------------------------------------------
 ' RecentColour helpers
 '-------------------------------------------------------------------------------
 Private Sub LoadRecentColours()
@@ -487,7 +516,7 @@ End Sub
 ' the value assignment separately from the (unlikely to fail) error trap above.
 Private Sub Me_Enabled_ResetHelper()
     enabled = False
-    Mode = hmCrosshair
+    Mode = hmRow
     colour = hcYellow
     CustomRGB = RGB_YELLOW
     AllowProtected = False
@@ -502,9 +531,11 @@ Private Sub Me_Enabled_ResetHelper()
     PerModeColours = False
     rowColour = hcYellow
     colColour = hcYellow
+    ScopeAll = False
     ' Clear recent colours on reset
     SaveSetting APP_NAME, SECTION_GENERAL, KEY_RECENT_COLOURS, ""
     mRecentCount = 0
     ReDim mRecentColours(0 To RECENT_COLOURS_COUNT - 1)
+    ColourPicker.ClearSwatchCache
     Logging.LogInfo "Settings.ResetToDefaults", "Settings reset to factory defaults"
 End Sub

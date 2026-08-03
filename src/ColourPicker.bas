@@ -104,6 +104,16 @@ Private Const CC_ANYCOLOR      As Long = &H100
 ' 16 custom colour slots that the API remembers between calls.
 Private mCustColors(0 To 15) As Long
 
+' Swatch cache, keyed by RGB value as text. The ribbon calls getItemImage far
+' more often than the underlying colour actually changes (every repaint,
+' every hover, every Invalidate) - regenerating a GDI bitmap + IPicture
+' wrapper from scratch on each of those calls was needlessly expensive and,
+' over a long Excel session, the most likely source of GDI resource
+' exhaustion (which shows up as broken/exclamation-mark icons and eventual
+' instability). Once a colour's swatch exists we just hand back the same
+' IPicture reference.
+Private mSwatchCache As Object
+
 '-------------------------------------------------------------------------------
 ' PromptForCustomRGB
 ' Description : Opens the native Windows colour picker dialog. This is the
@@ -164,6 +174,16 @@ Public Function CreateDynamicColourSwatch(ByVal rgbColour As Long) As Object
 
     On Error GoTo ErrHandler
 
+    If mSwatchCache Is Nothing Then Set mSwatchCache = CreateObject("Scripting.Dictionary")
+
+    Dim cacheKey As String
+    cacheKey = CStr(rgbColour)
+
+    If mSwatchCache.Exists(cacheKey) Then
+        Set CreateDynamicColourSwatch = mSwatchCache(cacheKey)
+        Exit Function
+    End If
+
     #If VBA7 Then
         Dim hScreenDC As LongPtr, hMemDC As LongPtr, hBitmap As LongPtr, hOldBmp As LongPtr, hBrush As LongPtr
     #Else
@@ -193,7 +213,7 @@ Public Function CreateDynamicColourSwatch(ByVal rgbColour As Long) As Object
 
     Dim iPictureGUID As GUID
     With iPictureGUID
-        .Data1 = CLng("&H7BF80980")
+        .Data1 = &H7BF80980
         .Data2 = &HBF32
         .Data3 = &H101A
         .Data4(0) = &H8B
@@ -209,6 +229,7 @@ Public Function CreateDynamicColourSwatch(ByVal rgbColour As Long) As Object
     Dim objPic As Object
     If OleCreatePictureIndirect(pic, iPictureGUID, 1, objPic) = 0 Then
         Set CreateDynamicColourSwatch = objPic
+        Set mSwatchCache(cacheKey) = objPic
     End If
 
     Exit Function
@@ -218,6 +239,17 @@ ErrHandler:
     Set CreateDynamicColourSwatch = Nothing
 
 End Function
+
+'-------------------------------------------------------------------------------
+' ClearSwatchCache
+' Description : Drops all cached swatch pictures. Call after Reset Settings
+'               or when recent colours change substantially, so the cache
+'               can't grow without bound across a very long Excel session.
+'-------------------------------------------------------------------------------
+Public Sub ClearSwatchCache()
+    On Error Resume Next
+    If Not mSwatchCache Is Nothing Then mSwatchCache.RemoveAll
+End Sub
 
 '-------------------------------------------------------------------------------
 ' InitCustomColours

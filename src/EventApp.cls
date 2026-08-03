@@ -76,6 +76,20 @@ ErrHandler:
 End Sub
 
 '-------------------------------------------------------------------------------
+' App_SheetBeforeRightClick
+' Fires just before the cell right-click menu is shown. Refreshes the
+' checked state of our "Toggle Highlighter" menu item so it always reflects
+' the current on/off state when the menu opens.
+'-------------------------------------------------------------------------------
+Private Sub App_SheetBeforeRightClick(ByVal sh As Object, ByVal target As Range, Cancel As Boolean)
+    On Error GoTo ErrHandler
+    AddinHost.RefreshContextMenuState
+    Exit Sub
+ErrHandler:
+    Logging.LogError "EventApp.App_SheetBeforeRightClick", Err.Number, Err.Description
+End Sub
+
+'-------------------------------------------------------------------------------
 ' App_SheetDeactivate
 '-------------------------------------------------------------------------------
 Private Sub App_SheetDeactivate(ByVal sh As Object)

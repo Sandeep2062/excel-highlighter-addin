@@ -3,7 +3,7 @@
           onLoad="onLoad">
   <ribbon>
     <tabs>
-      <tab id="tabHighlighter" label="Highlighter">
+      <tab id="tabHighlighter" label="Highlighter" insertAfterMso="TabHome">
 
         <!-- ================= Controls group ================= -->
         <group id="grpControls" label="Controls">
@@ -12,8 +12,8 @@
                         size="large"
                         imageMso="ConditionalFormattingMenu"
                         getLabel="GetToggle_Label"
-                        screentip="Enable or disable the crosshair highlighter"
-                        supertip="Turns highlighting on for every open workbook, or off entirely. Your cell formatting is never modified - this only toggles a temporary overlay."
+                        screentip="Enable or disable the crosshair highlighter (Ctrl+Shift+H)"
+                        supertip="Turns highlighting on or off. Shortcut: Ctrl+Shift+H. Right-click any cell and pick 'Toggle Highlighter' for the same action. By default (This Workbook) it affects only the workbook you toggle it in; switch the scope button in Options to apply it to every open workbook. Your cell formatting is never modified - this only toggles a temporary overlay."
                         getPressed="GetToggle_Pressed"
                         onAction="OnToggle_Action"/>
 
@@ -86,7 +86,7 @@
                   getImage="GetSwatchImage"
                   getEnabled="GetGallery_Enabled"
                   screentip="Pick a custom colour"
-                  supertip="Opens the standard Excel colour picker so you can choose any RGB colour for the highlight."
+                  supertip="Opens the standard Excel colour picker so you can choose any RGB colour for the highlight. The button shows the current highlight colour."
                   onAction="OnCustomColour_Action"/>
 
           <toggleButton id="btnPerModeColours"
@@ -142,7 +142,6 @@
 
           <toggleButton id="btnExcludeWorkbook"
                         size="large"
-                        label="Exclude Workbook"
                         imageMso="DeleteTable"
                         screentip="Exclude or include the current workbook"
                         supertip="When excluded, the current workbook is skipped by the highlighter entirely. The exclusion travels with the file itself via a hidden defined name."
@@ -153,7 +152,6 @@
 
           <toggleButton id="btnExcludeSheet"
                         size="large"
-                        label="Exclude Sheet"
                         imageMso="DeleteRows"
                         screentip="Exclude or include the current worksheet"
                         supertip="When excluded, the current worksheet is skipped by the highlighter while other sheets in the workbook continue to work normally. The exclusion travels with the file via a sheet-scoped defined name."
@@ -161,6 +159,15 @@
                         getEnabled="GetExcludeSheet_Enabled"
                         getLabel="GetExcludeSheet_Label"
                         onAction="OnExcludeSheet_Action"/>
+
+          <toggleButton id="btnScopeAll"
+                        size="large"
+                        imageMso="ViewGridlines"
+                        getLabel="GetScopeAll_Label"
+                        screentip="Apply the toggle to this workbook or to every open workbook"
+                        supertip="This Workbook (default): the highlight toggle affects only the workbook you are in. All Workbooks: toggling the highlighter on turns it on for every open workbook at once, and turning it off from any workbook turns it off for all of them."
+                        getPressed="GetScopeAll_Pressed"
+                        onAction="OnScopeAll_Action"/>
 
           <toggleButton id="btnAllowProtected"
                         size="large"
@@ -187,7 +194,7 @@
                   size="large"
                   imageMso="RefreshAll"
                   screentip="Reset to defaults"
-                  supertip="Restores the highlighter to its factory defaults: off, crosshair mode, yellow."
+                  supertip="Restores the highlighter to its factory defaults: off, row mode, yellow highlight, per-workbook scope."
                   onAction="OnReset_Action"/>
 
         </group>
