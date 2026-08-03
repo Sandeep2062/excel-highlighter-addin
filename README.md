@@ -257,12 +257,29 @@ What the script does:
 
 1. Creates a self-signed code-signing certificate named **Sandeep Khadka** in
    your Personal certificate store if one doesn't exist yet.
-2. Closes/holds Excel, opens the .xlam, and shows the VBA editor.
-3. **Waits for you** to do the one manual step (see below), then verifies the
+2. Ensures the VBA signing defaults exist in the registry - `V1HashEnhanced=2`
+   (SHA-256) and an RFC 3161 `TimeStampURL` under
+   `HKCU\Software\Microsoft\VBA\Security`. This is the documented fix for
+   the failure mode where signature parts exist but Excel's verdict is
+   `Signed=False` (the decoded signature's digest algorithm reads empty);
+   without it the signature consistently comes back invalid. The timestamp
+   also lets the signature survive certificate expiry.
+3. Pre-flights the machine: it refuses to start while a **visible** Excel
+   window is open, and it detects **windowless zombie `EXCEL.EXE` processes**
+   (leftovers from COM automation - no window, no tray icon, but they still
+   lock the add-in file), reports their PIDs and offers to kill them, so the
+   script never dead-ends on "Excel is currently running" when no Excel is
+   visible anywhere.
+4. Closes/holds Excel, opens the .xlam, and shows the VBA editor. It closes
+   any copy of the add-in that auto-loaded via the registry first, so the
+   VBE shows exactly **one** project - otherwise two projects both named
+   `Highlighter (excel-highlighter.xlam)` appear and you can sign the wrong
+   one.
+5. **Waits for you** to do the one manual step (see below), then verifies the
    result with Excel's own verdict (`VBProject.Signed` on a fresh open).
-4. Re-injects the customUI ribbon wiring that Excel's re-save strips
+6. Re-injects the customUI ribbon wiring that Excel's re-save strips
    (a signed-but-unwired file is worse than unsigned - see the changelog).
-5. Locks the file read-only so Excel cannot re-save it and invalidate the
+7. Locks the file read-only so Excel cannot re-save it and invalidate the
    signature again. Use `-NoLock` to skip.
 
 The manual step, inside the VBA editor that the script opens:
@@ -283,6 +300,8 @@ Useful switches:
   Root so Excel doesn't warn that the publisher is unverified (Trusted Root
   needs admin; the Publisher column shows the name either way).
 - `-Rebuild` - build from source first, then sign (build → sign → deploy).
+  The sign target defaults to the **freshly built repo copy**, not the stale
+  installed copy, so the new build actually ships.
 - `-NoLock` - don't set the read-only lock (not recommended - the lock is
   what stops Excel from breaking the signature).
 
@@ -448,8 +467,17 @@ This gives you separate colour galleries for the row and column highlights
 in Crosshair mode.
 
 **Why is the Publisher column blank in the Add-ins dialog?**
-The add-in is unsigned. See the [Signing](#signing-optional-but-recommended-for-the-publisher-column)
+The add-in is unsigned (or its signature was invalidated by an Excel re-save
+- the VBE's Tools > Digital Signature dialog can still show the old name in
+that case). See the [Signing](#signing-optional-but-recommended-for-the-publisher-column)
 section - it's a one-time manual step (`scripts/sign-xlam.ps1`).
+
+**Why does the signing script say "Excel is currently running" when no
+Excel is open?**
+A windowless zombie `EXCEL.EXE` (leftover from COM automation) is holding
+ the add-in file - it has no window or tray icon to close. `sign-xlam.ps1`
+ now detects these, shows their PID, and offers to kill them before
+ continuing.
 
 **Why do I need a COM add-in? I just want the highlighting.**
 On Excel 2024 / recent 365 the highlighting works from the .xlam alone, but

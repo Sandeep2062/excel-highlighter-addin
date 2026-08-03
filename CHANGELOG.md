@@ -3,6 +3,63 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.4.0] - 2026-08-03
+
+Release hardening pass: the signing workflow now survives the two failure
+modes that previously dead-ended it (invisible zombie Excel processes, and
+`-Rebuild -Deploy` signing the stale installed copy), plus a full docs
+refresh (build + install guides) and a clean unsigned rebuild of the release
+binary.
+
+### Chores
+- **Repo cleanup + docs refresh** - updated `README.md` with a detailed
+  build & install guide, rewrote `docs/installation.md` (Option D signing
+  flow now matches the script's real behaviour), corrected the stale
+  `_XLCH_*` defined-name references in `docs/architecture.md` and
+  `docs/future-features.md`, and rebuilt `excel-highlighter.xlam` fresh
+  (unsigned, as release builds ship) so the committed binary matches the
+  source and carries no leftover signature parts.
+- **`APP_VERSION` bumped to 2.4.0**.
+
+### Fixed
+- **Signing consistently returned "Stale" (signature parts exist but Excel
+  says `Signed=False`) - the signing script did not set the VBA signing
+  defaults.** Session finding on Excel 2024 (build 16.0.20228): with no
+  `V1HashEnhanced` registry value, the signature's digest algorithm decodes
+  empty and Excel's own fresh-open verdict is `False` on a fully readable
+  project. `scripts/sign-xlam.ps1` now ensures `V1HashEnhanced=2` (SHA-256)
+  plus an RFC 3161 `TimeStampURL` (DigiCert) under
+  `HKCU\Software\Microsoft\VBA\Security` before every signing attempt -
+  the exact fix Microsoft's "Digitally sign your VBA macro project"
+  documentation prescribes. Existing values are left untouched.
+- **The VBE showed TWO projects both named `Highlighter
+  (excel-highlighter.xlam)`, so the manual signing step could target the
+  wrong one.** The add-in auto-loads via the `OPEN` registry value, so a
+  fresh Excel instance already had a copy open before `sign-xlam.ps1`
+  opened the file being signed - and the advisory check even reported the
+  project as "not readable here". The interactive signing session now
+  closes any auto-loaded copy first, so the VBE shows exactly one project
+  with an unambiguous name.
+- **`sign-xlam.ps1` refused to start with "Excel is currently running"
+  even though no Excel window was visible anywhere.** COM automation
+  (the `-Rebuild` build step and earlier aborted signing runs) leaves
+  windowless zombie `EXCEL.EXE` processes behind - no window, no tray
+  icon, hidden under Task Manager's Details/Background processes - yet
+  they still hold the add-in file open and trip the old naive
+  `Get-Process EXCEL` check. The pre-flight now distinguishes a visible
+  Excel window (refused, as before) from windowless zombies: it reports
+  their PID + start time and offers to kill them, after a short grace
+  period for instances that are merely mid-shutdown. `build-xlam.ps1`
+  now releases its workbook COM references and forces a GC before
+  quitting, so the build stops leaving zombies behind in the first place.
+- **`-Rebuild -Deploy` signed the STALE installed copy instead of the
+  fresh build** - with no explicit `-XlamPath`, the default resolution
+  preferred the installed copy under `%APPDATA%\Microsoft\AddIns`, so
+  after a rebuild the script signed the OLD file and the deploy copy step
+  was a no-op (source == target). The default now prefers the freshly
+  built repo copy when `-Rebuild` is used, so `-Rebuild -Deploy` signs
+  the new build and pushes it over the installed copy as documented.
+
 ## [2.3.1] - 2026-08-03
 
 First tagged release (v2.3.1). Two user-reported polish fixes, both verified

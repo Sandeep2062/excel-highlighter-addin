@@ -117,7 +117,14 @@ if ($Rebuild) {
 if (-not $XlamPath) {
     $installed = Join-Path $env:APPDATA "Microsoft\AddIns\ExcelHighlighter\excel-highlighter.xlam"
     $repoXlam  = Join-Path $repoRoot "excel-highlighter.xlam"
-    if (Test-Path $installed) { $XlamPath = $installed }
+    # With -Rebuild the freshly built repo copy is the file to sign (the build
+    # just regenerated it); without it, the installed copy is the natural
+    # default. Prefer the fresh build so '-Rebuild -Deploy' signs the new file
+    # and pushes it over the installed copy - otherwise the script would sign
+    # the OLD installed copy and the rebuild would never ship (the -Deploy
+    # copy step is skipped when the source IS the install target).
+    if ($Rebuild -and (Test-Path $repoXlam)) { $XlamPath = $repoXlam }
+    elseif (Test-Path $installed) { $XlamPath = $installed }
     elseif (Test-Path $repoXlam) { $XlamPath = $repoXlam }
 }
 if (-not $XlamPath -or -not (Test-Path $XlamPath)) {
@@ -136,13 +143,64 @@ Write-Host ""
 Write-Host "Add-in to sign : $XlamPath" -ForegroundColor Cyan
 Write-Host "Publisher name  : $PublisherName" -ForegroundColor Cyan
 
-# --- pre-flight: refuse while Excel is running, clear lock, probe for locks --
+# --- pre-flight: refuse while a REAL Excel is running, clear lock, probe ---
 # A running Excel instance auto-loads the add-in (via the OPEN registry value)
 # and holds the file open. Saving from a second instance then crashes with
-# RPC_E_DISCONNECTED, so refuse to start while any Excel is running.
-$runningExcel = Get-Process EXCEL -ErrorAction SilentlyContinue
-if ($runningExcel) {
-    throw "Excel is currently running, and a running Excel instance locks the add-in file (it auto-loads it via the registry). Close ALL Excel windows (File > Exit, including the system tray) and re-run this script."
+# RPC_E_DISCONNECTED, so refuse to start while Excel is in use.
+#
+# BUT "Excel is running" is not the same as "an Excel window is open". COM
+# automation (build-xlam.ps1, earlier aborted runs of this script) frequently
+# leaves windowless zombie EXCEL.EXE processes behind: no window, no tray
+# icon, invisible in Task Manager's Apps list (they hide under
+# Details / Background processes), yet still holding the add-in file open.
+# Telling the user to "close Excel" for those is a dead end - there is
+# nothing to close. So split the check:
+#   - visible instance(s) with a window -> refuse, tell the user to close them
+#   - only windowless zombie(s)         -> report PID + start time, then offer
+#     to kill them (COM-automation leftovers, no user data to lose - killing
+#     them is what "close Excel" would do anyway)
+$runningExcel = @(Get-Process EXCEL -ErrorAction SilentlyContinue)
+if ($runningExcel.Count -gt 0) {
+    $visible = @($runningExcel | Where-Object { $_.MainWindowHandle -ne 0 })
+    if ($visible.Count -gt 0) {
+        throw "Excel is currently running with a visible window (PID(s): $($visible.Id -join ', ')). A running Excel instance locks the add-in file (it auto-loads it via the registry). Close ALL Excel windows (File > Exit, including the system tray) and re-run this script."
+    }
+    # Only windowless processes. They may be our own build's instances that
+    # are still shutting down (just Quit()'d) - give them a moment to exit on
+    # their own before treating them as zombies. Also re-check for visible
+    # instances: one could appear during the wait (user opens Excel, or a
+    # zombie surfaces a recovery dialog) and must be refused with the clear
+    # message, not left to the generic file-lock probe.
+    $zombies = @($runningExcel | Where-Object { $_.MainWindowHandle -eq 0 })
+    $deadline = (Get-Date).AddSeconds(5)
+    while ($zombies.Count -gt 0 -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 500
+        $runningExcel = @(Get-Process EXCEL -ErrorAction SilentlyContinue)
+        $visible = @($runningExcel | Where-Object { $_.MainWindowHandle -ne 0 })
+        if ($visible.Count -gt 0) {
+            throw "Excel is currently running with a visible window (PID(s): $($visible.Id -join ', ')). A running Excel instance locks the add-in file (it auto-loads it via the registry). Close ALL Excel windows (File > Exit, including the system tray) and re-run this script."
+        }
+        $zombies = @($runningExcel | Where-Object { $_.MainWindowHandle -eq 0 })
+    }
+    if ($zombies.Count -gt 0) {
+        Write-Host "Found $($zombies.Count) windowless EXCEL.EXE process(es) - leftovers from COM automation (no window, no tray icon, but they lock the add-in file):" -ForegroundColor Yellow
+        foreach ($z in $zombies) {
+            $started = try { $z.StartTime.ToString("HH:mm:ss") } catch { "unknown" }
+            Write-Host "  PID $($z.Id) - started $started" -ForegroundColor Yellow
+        }
+        # Windowless instances are usually COM-automation leftovers, but they
+        # can also be automation servers hosting a workbook with unsaved
+        # changes - killing them discards that. Default is N for that reason.
+        $answer = Read-Host "Kill these windowless Excel processes and continue? (y/N - killing may discard unsaved changes in an automated session)"
+        if ($answer -notmatch '^(y|yes)$') {
+            throw "Excel processes are still running. Close ALL Excel windows AND end any EXCEL.EXE in Task Manager > Details, then re-run this script."
+        }
+        foreach ($z in $zombies) {
+            try { Stop-Process -Id $z.Id -Force -ErrorAction Stop; Write-Host "  Killed EXCEL PID $($z.Id)." -ForegroundColor Green }
+            catch { Write-Warning "  Could not kill EXCEL PID $($z.Id): $($_.Exception.Message)" }
+        }
+        Start-Sleep -Milliseconds 1500
+    }
 }
 
 # A previous run may have locked the file read-only to protect the signature.
@@ -215,6 +273,33 @@ if ($Trust) {
         Write-Warning "  Could not add to Trusted Root (needs administrator rights). The Publisher column still shows the name - this step only avoids the 'publisher unverified' prompt. Re-run as Administrator if you want it."
     }
     Remove-Item $cerPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- step 1b: ensure the VBA signing defaults exist ---------------------------
+# Session finding (Excel 2024 build 16.0.20228): a project signed without
+# V1HashEnhanced consistently comes back Stale - signature parts exist but
+# Excel's own verdict (fresh open, VBProject.Signed on the readable project)
+# is False, and the decoded signature's DigestAlgorithm reads empty. Microsoft's
+# documentation ("Digitally sign your VBA macro project") prescribes exactly this
+# key: HKCU\SOFTWARE\Microsoft\VBA\Security\V1HashEnhanced, DWORD, 1=SHA1,
+# 2=SHA256, 3=SHA384, 4=SHA512. We default to SHA256. A TimeStampURL (RFC 3161)
+# makes the signature survive certificate expiry. Both are current-user keys -
+# reversible, no admin needed. Existing values are left untouched.
+$vbaSecurityKey = "HKCU:\Software\Microsoft\VBA\Security"
+try {
+    if (-not (Test-Path $vbaSecurityKey)) { New-Item -Path $vbaSecurityKey -Force | Out-Null }
+    if (-not (Get-ItemProperty $vbaSecurityKey -Name V1HashEnhanced -ErrorAction SilentlyContinue)) {
+        New-ItemProperty -Path $vbaSecurityKey -Name V1HashEnhanced -PropertyType DWord -Value 2 -Force | Out-Null
+        Write-Host "Set V1HashEnhanced=2 (SHA256) - the documented fix for VBA signatures Excel rejects." -ForegroundColor Green
+    }
+    if (-not (Get-ItemProperty $vbaSecurityKey -Name TimeStampURL -ErrorAction SilentlyContinue)) {
+        New-ItemProperty -Path $vbaSecurityKey -Name TimeStampURL -PropertyType String -Value "http://timestamp.digicert.com" -Force | Out-Null
+        New-ItemProperty -Path $vbaSecurityKey -Name TimeStampRetryCount -PropertyType DWord -Value 3 -Force | Out-Null
+        New-ItemProperty -Path $vbaSecurityKey -Name TimeStampRetryDelay -PropertyType DWord -Value 1000 -Force | Out-Null
+        Write-Host "Set TimeStampURL (RFC 3161) so the signature survives cert expiry." -ForegroundColor Green
+    }
+} catch {
+    Write-Warning "Could not ensure VBA signing registry keys: $($_.Exception.Message)"
 }
 
 # --- report the current signature state so the user knows what to expect -----
@@ -297,6 +382,23 @@ try {
     $excel.DisplayAlerts = $false
     $excel.EnableEvents = $false
     try { $excel.AutomationSecurity = 1 } catch {}   # 1 = low, loads macros without prompts
+    # Session finding: the add-in auto-loads via the OPEN registry value, so a
+    # fresh Excel instance ALREADY has a copy open before we open $XlamPath.
+    # The VBE then shows TWO projects both named 'Highlighter
+    # (excel-highlighter.xlam)' and the user can sign/save the WRONG one -
+    # which is how a signature ends up on a different project than the file we
+    # verify (verdict: parts exist but Signed=False). Close the auto-loaded
+    # copy first so the VBE shows exactly one project with an unambiguous name.
+    try {
+        foreach ($_wb in $excel.Workbooks) {
+            if ($_wb.IsAddin -and $_wb.Name -like "excel-highlighter*") {
+                $_wb.Close($false)
+                Write-Host "Closed the auto-loaded copy of the add-in so the VBE shows only the file being signed." -ForegroundColor Yellow
+            }
+        }
+    } catch {
+        Write-Warning "Could not close the auto-loaded add-in copy: $($_.Exception.Message)"
+    }
     try {
         $wb = $excel.Workbooks.Open($XlamPath)
     } catch {

@@ -21,15 +21,15 @@ actually be worth doing next.
 
 ## Implemented in v1.3.0
 
-- **Merged-cell support** - active selection detection uses range bounds (`_XLCH_Row`, `_XLCH_RowEnd`, `_XLCH_Col`, `_XLCH_ColEnd`), ensuring crosshairs cover full merged cell dimensions.
+- **Merged-cell support** - active selection detection uses range bounds (`XLCH_Row`, `XLCH_RowEnd`, `XLCH_Col`, `XLCH_ColEnd`), ensuring crosshairs cover full merged cell dimensions.
 - **Dynamic GDI swatches** - recent custom colours render solid 32x32 swatches in the Ribbon gallery via `OleCreatePictureIndirect` and GDI bitmap generation.
 - **Dark mode support** - toggleable Dark Mode tinting for comfortable visual contrast on dark Office themes.
 - **64-bit Office compatibility** - complete `PtrSafe` / `LongPtr` API coverage for Windows Common Dialog and GDI functions.
 
 ## Implemented in v1.2.0
 
-- **Workbook exclusion list** - a per-workbook "don't highlight this one" toggle via `_XLCH_Excluded`.
-- **Worksheet exclusion list** - per-sheet toggle via `_XLCH_SheetExcluded`.
+- **Workbook exclusion list** - a per-workbook "don't highlight this one" toggle via `XLCH_Excluded`.
+- **Worksheet exclusion list** - per-sheet toggle via `XLCH_SheetExcluded`.
 - **Keyboard shortcuts** - `Ctrl+Shift+H` (toggle), `Ctrl+Shift+Z/X` (history).
 - **Status bar integration** - shows mode, colour, and active extras.
 - **Recent colours in gallery** - last 4 custom colours in the gallery.

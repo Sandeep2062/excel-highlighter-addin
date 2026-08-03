@@ -274,10 +274,21 @@ try {
     $workbook.Close($false)
 }
 finally {
+    # Session finding: PowerShell keeps RCWs (runtime callable wrappers) alive
+    # until garbage collection, so an EXCEL.EXE Quit()'d here can stay running
+    # as a WINDOWLESS ZOMBIE holding the .xlam open - which then trips the
+    # signing script's pre-flight with "Excel is currently running" even
+    # though no Excel window exists anywhere. Release every COM reference
+    # explicitly ($workbook, $vbProject, $excel) and force a GC so the
+    # process really exits.
+    try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($vbProject) | Out-Null } catch {}
+    try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($workbook) | Out-Null } catch {}
     try { $excel.Quit() } catch {}
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+    try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null } catch {}
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
     # Give Excel a moment to fully release file locks.
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 1000
 }
 
 Write-Host "Base .xlam written to $tempXlam" -ForegroundColor Green
@@ -540,8 +551,14 @@ try {
     }
 }
 finally {
+    # Same zombie prevention as the build instance above: release the workbook
+    # reference and force a GC so this verification EXCEL.EXE cannot linger as
+    # a windowless process locking the built add-in.
+    try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($checkWb) | Out-Null } catch {}
     try { $checkExcel.Quit() } catch {}
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($checkExcel) | Out-Null
+    try { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($checkExcel) | Out-Null } catch {}
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
 }
 
 Write-Host "Build successful: $outputPath" -ForegroundColor Green

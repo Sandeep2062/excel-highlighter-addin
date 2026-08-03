@@ -148,7 +148,7 @@ Public Const DEFAULT_HOTKEY_HISTORY_BACK As String = "^+Z"   ' Ctrl+Shift+Z
 Public Const DEFAULT_HOTKEY_HISTORY_FWD  As String = "^+X"   ' Ctrl+Shift+X
 
 ' --- Misc ------------------------------------------------------------------------
-Public Const APP_VERSION             As String = "2.3.1"
+Public Const APP_VERSION             As String = "2.4.0"
 Public Const RECENT_COLOURS_COUNT    As Long = 4
 Public Const SELECTION_HISTORY_SIZE  As Long = 20
 Public Const STATUS_BAR_PREFIX       As String = "XLCH: "
